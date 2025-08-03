@@ -2,86 +2,109 @@
 
 ## 1. Zweck der Umgebung
 
-Die Datei `insurance_gym.py` simuliert eine **vereinfachte Underwriting‑Welt**: Ein Agent (unsere RL‑Strategie) bekommt nacheinander potenzielle Versicherungskunden angeboten und entscheidet bei jedem Kunden:
+Die Datei `insurance_gym.py` simuliert eine **vereinfachte Underwriting-Umgebung** für Versicherungskunden. Bei jedem Schritt erhält der Agent ein neues Kundenprofil und muss entscheiden:
 
-* **Aktion 0 – ablehnen** → kein Geld, kein Risiko.
-* **Aktion 1 – annehmen** → sofort Prämie kassieren, aber später könnte ein Schaden eintreten.
+* **Aktion 0 – ablehnen** → keine Transaktion (kein Geld, kein Risiko)
+* **Aktion 1 – annehmen** → sofortige Gutschrift der Prämie, später evtl. Schadenszahlung
 
-Ziel des Agents: **möglichst viel abgezinsten Gewinn** (Prämien − Schäden) sammeln.
-
----
-
-## 2. Aufbau eines Kunden („Profile“)
-
-Jeder Kunde ist ein Objekt der Klasse `Profile` und hat genau drei Merkmale:
-
-| Merkmal      | Wertebereich              | Bedeutung                                |
-| ------------ | ------------------------- | ---------------------------------------- |
-| `age`        | 18 – 80 Jahre (Ganzzahl)  | Alter des Kunden                         |
-| `region`     | 0 – 4 (Ganzzahl)          | Fünf grobe Regionen (z. B. Nord, Süd …)  |
-| `risk_score` | 0.00 – 1.00 (Dezimalzahl) | Abstrakter Risikowert, höher = riskanter |
-
-> **Anzahl Profile**: Standardmäßig **100**, lassen sich aber über den Parameter `n_profiles` ändern.
-
-### Wie werden Preis & Risiko berechnet?
-
-Die Umgebung benutzt **feste Formeln** (keinen Zufall), sodass dieselben Merkmale immer zu denselben Werten führen – so kann der Agent Regeln *lernen*.
-
-* **Prämie (Einnahme)** wächst mit Alter und Region.
-* **Claim‑Wahrscheinlichkeit (Risiko)** steigt mit Risk‑Score, Alter und Region.
+Ziel des Agenten: **möglichst viel nominalen Gewinn** (Prämien minus Schäden) über eine Episode sammeln. Die zeitliche Abzinsung übernimmt der RL-Agent selbst.
 
 ---
 
-## 3. Zustand („State“)
+## 2. Kunden-Profil
 
-Damit tabellarisches Q‑Learning funktioniert, werden die drei Merkmale in **Schubladen (Bins)** einsortiert und dann zu einem einzigen Zustands‑Index (0 – 649) kombiniert:
+Jeder Kunde wird als Instanz der Klasse `Profile` erzeugt mit drei Merkmalen:
 
-| Merkmal | Binning                           | Anzahl Bins |
-| ------- | --------------------------------- | ----------- |
-| Alter   | 5‑Jahres‑Gruppen (18–22, 23–27 …) | 13          |
-| Region  | schon diskret 0–4                 | 5           |
-| Risk    | 0.0 – 1.0 in 0.1‑Schritten        | 10          |
+| Merkmal      | Wertebereich            | Beschreibung                                     |
+| ------------ | ----------------------- | ------------------------------------------------ |
+| `age`        | ganzzahlig in \[18, 80] | Alter des Kunden                                 |
+| `region`     | ganzzahlig in \[0, 4]   | Region (0: sehr niedriges Risiko … 4: sehr hoch) |
+| `risk_score` | gleitkomma in \[0, 1)   | Zufälliger Risikowert                            |
 
-**Gesamtzustände** = 13 × 5 × 10 = **650**.
+Die Profile werden bei Env-Initialisierung nach einem fixen `seed` erstellt, um Reproduzierbarkeit zu gewährleisten.
 
 ---
 
-## 4. Aktionen
+## 3. Prämienberechnung
 
-```python
-self.action_space = spaces.Discrete(2)  # 0 = ablehnen, 1 = annehmen
+Die jährliche Prämie für ein Profil `p` wird deterministisch berechnet:
+
+```
+premium(p) = 200 + 4 * (p.age - 18)
+             + [0, 20, 40, 60, 80][p.region]
+```
+
+Je älter der Kunde und je riskanter die Region, desto höher die Prämie.
+
+---
+
+## 4. Schaden-Wahrscheinlichkeit
+
+Die Wahrscheinlichkeit, dass ein Schaden auftritt, ergibt sich aus:
+
+```
+prob(p) = 0.02
+          + 0.25 * p.risk_score
+          + (p.age - 18) / (80 - 18) * 0.10
+          + [0, 0.01, 0.03, 0.05, 0.07][p.region]
+```
+
+Um Ausreißer zu vermeiden, wird der Wert auf max. 0.90 gekappt:
+
+```
+claim_prob(p) = min(prob(p), 0.90)
 ```
 
 ---
 
-## 5. Belohnung (Reward)
+## 5. Zustandsraum: Binning
 
-1. **Sofort**: Wenn Aktion = 1, wird die berechnete Prämie gutgeschrieben.
-2. **Verzögert**: Mit der gespeicherten Claim‑Wahrscheinlichkeit kann nach `delay` Zeitschritten (standard 10) ein **Schaden** eintreten. Die Schadenshöhe stammt aus einer **Pareto‑Verteilung** (sehr hohe Ausreißer möglich).
+Zur Reduktion der Zustände werden die Features diskretisiert:
 
-> Daraus ergibt sich ein typisches Versicherungs‑Problem: hohe, seltene Verluste + zeitliche Verzögerung.
+* `N_AGE_BINS = 13`
+* `N_REGIONS = 5`
+* `N_RISK_BINS = 10`
 
----
-
-## 6. Episode & Parameter
-
-| Parameter                   | Standard       | Bedeutung                                             |
-| --------------------------- | -------------- | ----------------------------------------------------- |
-| `delay`                     | 10 Schritte    | Wie lange es dauert, bis ein Schaden ausgezahlt wird. |
-| `horizon`                   | 1 000 Schritte | Länge einer Episode (max. Kunden pro Durchlauf).      |
-| `pareto_alpha`, `pareto_xm` | 1.5, 1.0       | Form der Schadensverteilung (fetter Schwanz).         |
-| `seed`                      | –              | Zufalls‑Seed für Reproduzierbarkeit.                  |
+Die Gesamtzahl der Zustände beträgt `13 × 5 × 10 = 650`. Das Environment stellt dies als `gym.spaces.Discrete(650)` zur Verfügung.
 
 ---
 
-## 7. Warum ist das lernbar?
+## 6. Aktionen und Reward
 
-* Die Binning‑Strategie beschränkt die **Zahl der Zustände** auf 650 → kleine Tabelle.
-* Preis & Risiko hängen **deterministisch** von den Merkmalen ab → es gibt Regeln, die der Agent entdecken kann.
-* Durch den **Delay** lohnt sich EZ‑greedy‑Exploration: Eine Aktion bleibt mehrere Schritte aktiv, bis der Schaden sichtbar wird.
+* **Aktionen**: `gym.spaces.Discrete(2)` (0=ablehnen, 1=annehmen)
+* **Reward**:
+
+  * Bei Annahme: sofortige Auszahlung der Prämie
+  * Bei Ablehnung: 0
+  * Schadenszahlungen werden nach einem festen `delay` (Standardwert 10) verzögert ausgezahlt.
+
+Intern verwendet das Environment eine `collections.deque` der Länge `delay + 1`, um Rewards verzögert zu liefern. Die maximale Episodenlänge (`horizon`) beträgt 1 000 Schritte.
+
+---
+
+## 7. Pareto-Schadensverteilung & Parameter
+
+| Parameter      | Default-Wert | Beschreibung                          |
+| -------------- | ------------ | ------------------------------------- |
+| `n_profiles`   | 100          | Anzahl gleichzeitiger Profile         |
+| `delay`        | 10           | Verzögerung der Schadensauszahlung    |
+| `horizon`      | 1000         | Maximale Episodenlänge                |
+| `pareto_alpha` | 1.5          | Formparameter der Pareto-Verteilung   |
+| `pareto_xm`    | 1.0          | Skalenparameter der Pareto-Verteilung |
+| `seed`         | –            | Zufalls-Seed für Profile und Claims   |
+
+Schadensbeträge werden bei Auftreten aus einer Pareto-Verteilung (`alpha=1.5`, `xm=1.0`) gezogen.
+
+---
+
+## 8. Warum ist das lernbar?
+
+* **Begrenzter Zustandsraum (650 Zustände)** → überschaubare Q-Tabelle
+* **Deterministische Regeln** in Prämie & Schaden → klare Strukturen, die Agent erlernen kann
+* **Verzögerte Belohnung** durch `delay` → lohnende Exploration trotz kurzfristiger Ungewissheit
 
 ---
 
 ### TL;DR
 
-`insurance_gym.py` liefert eine **kompakte, aber realistischere** Versicherungs‑Simulation mit 100 synthetischen Kundenprofilen. Zustände werden in Schubladen gepackt, damit tabellarisches Q‑Learning in wenigen Minuten trainiert, während die Aufgabe durch Verzögerung und fette Schadensausreißer spannend bleibt.
+`insurance_gym.py` bietet eine **kompakte**, aber **realistische** Simulationsumgebung, in der ein RL-Agent Underwriting-Entscheidungen trifft. Die Kombination aus deterministischen Prämienregeln, stochastischer Schadenserzeugung, verzögerter Auszahlung und fetten Pareto-Ausreißern macht das Training herausfordernd und spannend.
