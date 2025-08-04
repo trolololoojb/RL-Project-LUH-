@@ -2,3 +2,5 @@
 .venv
 */roadmap.md
 *Zone.Identifier*
+*.pyc
+*/__pycache__
