@@ -39,8 +39,8 @@ def run_single_experiment(
     gamma: float,
     alpha: float,
     eps: float,
-) -> float:
-    """Run one experimental trial for the given exploration strategy and seed."""
+) -> list[float]:
+    """Run one trial and return a list of discounted returns, one per episode."""
     env = InsuranceEnv(delay=delay, horizon=episodes, seed=seed)
     agent = QLearner(
         n_states=env.observation_space.n,
@@ -55,12 +55,13 @@ def run_single_experiment(
         EZGreedy(base_eps=eps, k=delay, rng=rng) if schedule_label == "EZ" else None
     )
 
-    total_return = 0.0
+    episode_returns: list[float] = []
 
     for ep in range(episodes):
         obs, _ = env.reset()
         done = False
-        step_idx = 0  # index for discounting within the episode
+        step_idx = 0
+        ep_return = 0.0
 
         while not done:
             if schedule_label == "EZ":
@@ -73,12 +74,13 @@ def run_single_experiment(
             agent.update(obs, action, reward, next_obs)
             obs = next_obs
 
-            total_return += (gamma ** step_idx) * reward  # accumulate discounted reward
+            ep_return += (gamma ** step_idx) * reward
             step_idx += 1
-
             done = terminated or truncated
 
-    return total_return
+        episode_returns.append(ep_return)
+
+    return episode_returns
 
 
 def main() -> None:
@@ -111,7 +113,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # read CLI values
     episodes = args.episodes
     delay = args.delay
     eps = args.eps
@@ -120,7 +121,6 @@ def main() -> None:
     base_seed = args.seed
     seeds = list(range(base_seed, base_seed + 10))
 
-    # create results directory and record metadata
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
     meta = {
@@ -140,23 +140,23 @@ def main() -> None:
         ("EZ", None),
     ]
 
-    all_rows: List[Tuple[str, int, float]] = []
+    all_rows: List[Tuple[str, int, int, float]] = []  # variant, seed, episode, return
 
     for label, eps_fn in variants:
-        returns = [
-            run_single_experiment(label, eps_fn, seed, episodes, delay, gamma, alpha, eps)
-            for seed in seeds
-        ]
-        print(f"{label:<6} | mean = {mean(returns):10.2f} | std = {stdev(returns):8.2f}")
-        all_rows.extend((label, seed, r) for seed, r in zip(seeds, returns))
+        for seed in seeds:
+            ep_returns = run_single_experiment(
+                label, eps_fn, seed, episodes, delay, gamma, alpha, eps
+            )
+            for ep_idx, r in enumerate(ep_returns, start=1):
+                all_rows.append((label, seed, ep_idx, r))
 
     out_file = results_dir / "experiment_summary.csv"
     with out_file.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["variant", "seed", "total_return"])
+        writer.writerow(["variant","seed","episode","return"])
         writer.writerows(all_rows)
 
-    print(f"\nResults saved to → {results_dir / 'experiment_summary.csv'}")
+    print(f"Results saved to → {out_file}")
     print(f"Metadata saved to → {results_dir / 'run_meta.json'}")
 
 
