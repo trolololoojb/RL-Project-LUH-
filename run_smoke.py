@@ -1,5 +1,5 @@
 from insurance_gym import InsuranceEnv
-from agents.qlearner import QLearner
+from source.qlearner import QLearner
 
 env = InsuranceEnv(delay=5, seed=0)
 agent = QLearner(n_states=env.observation_space.n,
