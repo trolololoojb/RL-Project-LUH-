@@ -11,13 +11,13 @@ from typing import Callable, List, Tuple
 import numpy as np
 
 from insurance_gym import InsuranceEnv
-from agents.exploration_schedules import fixed_eps_schedule, EZGreedy
-from agents.qlearner import QLearner
+from source.exploration_schedules import fixed_eps_schedule, EZGreedy
+from source.qlearner import QLearner
 
 
 # run_experiment.py
 # Benchmark different epsilon strategies (Fixed, EZ-Greedy) on the InsuranceEnv.
-# Parameters such as number of episodes, delay, ε, α, γ, and seed are provided via command line.
+# Parameters such as number of episodes, episode length, delay, repetition length, ε, α, γ, and seed are provided via command line.
 # Generates results/experiment_summary.csv and results/run_meta.json.
 
 
@@ -30,18 +30,22 @@ def get_git_commit() -> str:
         return "unknown"
 
 
+
 def run_single_experiment(
-    schedule_label: str,
-    eps_fn: Callable[[int, int], float] | None,
-    seed: int,
-    episodes: int,
-    delay: int,
-    gamma: float,
-    alpha: float,
-    eps: float,
+    schedule_label: str,  # which exploration schedule to use
+    eps_fn: Callable[[int, int], float] | None,  # function to compute epsilon, or None for EZ schedule
+    seed: int,  # random seed for reproducibility
+    n_episodes: int,  # number of episodes to run
+    horizon: int,  # maximum number of steps per episode
+    delay: int,  # delay parameter for claims in the environment
+    k_repeat: int,  # number of steps to repeat an exploratory action in EZ-Greedy
+    gamma: float,  # discount factor for future rewards
+    alpha: float,  # learning rate for the Q-learning agent
+    eps: float,  # base epsilon for fixed ε-greedy strategy
 ) -> list[float]:
     """Run one trial and return a list of discounted returns, one per episode."""
-    env = InsuranceEnv(delay=delay, horizon=episodes, seed=seed)
+    # initialize environment and agent
+    env = InsuranceEnv(delay=delay, horizon=horizon, seed=seed)
     agent = QLearner(
         n_states=env.observation_space.n,
         n_actions=env.action_space.n,
@@ -50,15 +54,16 @@ def run_single_experiment(
         seed=seed,
     )
 
+    # setup RNG and EZ-Greedy helper if needed
     rng = np.random.default_rng(seed)
     ez_helper = (
-        EZGreedy(base_eps=eps, k=delay, rng=rng) if schedule_label == "EZ" else None
+        EZGreedy(base_eps=eps, k=k_repeat, rng=rng) if schedule_label == "EZ" else None
     )
 
     episode_returns: list[float] = []
 
-    for ep in range(episodes):
-        obs, _ = env.reset()
+    for ep in range(n_episodes):
+        obs, _ = env.reset()  # reset the environment and get initial observation
         done = False
         step_idx = 0
         ep_return = 0.0
@@ -92,8 +97,16 @@ def main() -> None:
         help="Number of episodes per seed"
     )
     parser.add_argument(
+        "--horizon", "-l", type=int, default=1000,
+        help="Maximum number of steps per episode"
+    )
+    parser.add_argument(
         "--delay", "-d", type=int, default=10,
         help="Delay parameter for claims"
+    )
+    parser.add_argument(
+        "--k_repeat", "-k", type=int, default=None,
+        help="Repetition length for EZ-Greedy (defaults to delay)"
     )
     parser.add_argument(
         "--eps", "-ε", type=float, default=0.1,
@@ -113,8 +126,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    episodes = args.episodes
+    n_episodes = args.episodes
+    horizon = args.horizon
     delay = args.delay
+    k_repeat = args.k_repeat or delay
     eps = args.eps
     alpha = args.alpha
     gamma = args.gamma
@@ -125,8 +140,10 @@ def main() -> None:
     results_dir.mkdir(exist_ok=True)
     meta = {
         "git_commit": get_git_commit(),
-        "episodes": episodes,
+        "episodes": n_episodes,
+        "horizon": horizon,
         "delay": delay,
+        "k_repeat": k_repeat,
         "eps": eps,
         "alpha": alpha,
         "gamma": gamma,
@@ -145,7 +162,7 @@ def main() -> None:
     for label, eps_fn in variants:
         for seed in seeds:
             ep_returns = run_single_experiment(
-                label, eps_fn, seed, episodes, delay, gamma, alpha, eps
+                label, eps_fn, seed, n_episodes, horizon, delay, k_repeat, gamma, alpha, eps
             )
             for ep_idx, r in enumerate(ep_returns, start=1):
                 all_rows.append((label, seed, ep_idx, r))
