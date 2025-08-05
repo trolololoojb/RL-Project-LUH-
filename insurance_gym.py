@@ -20,7 +20,7 @@ N_STATE_BUCKETS = N_AGE_BINS * N_REGIONS * N_RISK_BINS
 class Profile:
     """Basic customer profile data."""
     age: int       # between 18 and 80
-    region: int    # index from 0 to 4
+    region: int    # index from 0 to 4 (5 regions)
     risk_score: float  # continuous value in [0, 1]
 
 class InsuranceEnv(gym.Env):
@@ -32,19 +32,19 @@ class InsuranceEnv(gym.Env):
     metadata = {"render_modes": []}
 
     def __init__(
-        self,
-        *,
-        n_profiles: int = 100,
-        pareto_alpha: float = 1.5,
-        pareto_xm: float = 1.0,
-        delay: int = 10,
-        horizon: int = 1_000,
-        seed: Optional[int] = None,
+        self, # parameters for the environment
+        *, # parameters for synthetic profiles
+        n_profiles: int = 100, # number of unique customer profiles
+        pareto_alpha: float = 1.5, # shape parameter for Pareto distribution
+        pareto_xm: float = 1.0, # scale parameter for Pareto distribution
+        delay: int = 10, # delay in steps for claim payouts
+        horizon: int = 1_000, # maximum number of steps per episode
+        seed: Optional[int] = None, # random seed for reproducibility
     ) -> None:
         super().__init__()
 
-        # RNG and synthetic profiles
-        self.rng = np.random.default_rng(seed)
+        # random number generator and synthetic profiles
+        self.rng = np.random.default_rng(seed) 
         self.n_profiles = n_profiles
         self.profiles = [
             Profile(
@@ -79,7 +79,7 @@ class InsuranceEnv(gym.Env):
             self.rng.bit_generator.seed(seed)
         # Clear any pending payouts
         self.buffer.clear()
-        self.buffer.extend([0.0] * (self.delay + 1))
+        self.buffer.extend([0.0] * (self.delay + 1)) # buffer get filled with zeros for the delay period
         self.t = 0
         # Sample initial customer
         self.current_state = self._sample_state()
@@ -89,7 +89,7 @@ class InsuranceEnv(gym.Env):
         assert self.action_space.contains(action)
 
         # Get any payout due now
-        reward = self.buffer.popleft()
+        reward = self.buffer.popleft() # get the first element (oldest payout)
 
         # Decide on underwriting action
         idx = self._state_to_profile_idx(self.current_state)
