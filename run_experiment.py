@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from statistics import mean, stdev
 from typing import Callable, List, Tuple
+from datetime import datetime
 
 import numpy as np
 
@@ -18,7 +19,7 @@ from source.qlearner import QLearner
 # run_experiment.py
 # Benchmark different epsilon strategies (Fixed, EZ-Greedy) on the InsuranceEnv.
 # Parameters such as number of episodes, episode length, delay, repetition length, ε, α, γ, and seed are provided via command line.
-# Generates results/experiment_summary.csv and results/run_meta.json.
+# Generates a timestamped results folder containing experiment_summary.csv and run_meta.json.
 
 
 def get_git_commit() -> str:
@@ -28,7 +29,6 @@ def get_git_commit() -> str:
         return out.decode().strip()
     except Exception:
         return "unknown"
-
 
 
 def run_single_experiment(
@@ -136,8 +136,11 @@ def main() -> None:
     base_seed = args.seed
     seeds = list(range(base_seed, base_seed + 10))
 
-    results_dir = Path("results")
-    results_dir.mkdir(exist_ok=True)
+    # create timestamped results directory
+    timestamp = datetime.now().strftime("%Y_%m_%d_%H%M%S")
+    results_dir = Path("results") / timestamp
+    results_dir.mkdir(parents=True, exist_ok=True)
+
     meta = {
         "git_commit": get_git_commit(),
         "episodes": n_episodes,
