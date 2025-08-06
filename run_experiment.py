@@ -19,7 +19,8 @@ from source.qlearner import QLearner
 # run_experiment.py
 # Benchmark different epsilon strategies (Fixed, EZ-Greedy) on the InsuranceEnv.
 # Parameters such as number of episodes, episode length, delay, repetition length, ε, α, γ, and seed are provided via command line.
-# Generates a timestamped results folder containing experiment_summary.csv and run_meta.json.
+# Generates a timestamped results folder containing experiment_summary.csv, run_meta.json,
+# profiles_<variant>_<seed>.csv and actions_<variant>_<seed>.csv.
 
 
 def get_git_commit() -> str:
@@ -42,8 +43,8 @@ def run_single_experiment(
     gamma: float,  # discount factor for future rewards
     alpha: float,  # learning rate for the Q-learning agent
     eps: float,  # base epsilon for fixed ε-greedy strategy
-) -> list[float]:
-    """Run one trial and return a list of discounted returns, one per episode."""
+) -> Tuple[list[float], int, list, list]:
+    """Run one trial and return returns, total accepts, profiles list, and actions per episode."""
     # initialize environment and agent
     env = InsuranceEnv(delay=delay, horizon=horizon, seed=seed)
     agent = QLearner(
@@ -54,6 +55,9 @@ def run_single_experiment(
         seed=seed,
     )
 
+    # retrieve static profiles
+    profile_list = env.profiles
+
     # setup RNG and EZ-Greedy helper if needed
     rng = np.random.default_rng(seed)
     ez_helper = (
@@ -61,24 +65,31 @@ def run_single_experiment(
     )
 
     episode_returns: list[float] = []
-  # count of accepted profiles
+
+    episode_actions: list[list[Tuple[int, int]]] = []  # list per episode of (step_profile_idx, action)
+
     for ep in range(n_episodes):
-        obs, _ = env.reset()  # reset the environment and get initial observation
-        print(obs)  # debug: print initial observation
+
+        obs, info = env.reset()  # reset environment and get initial state and profile_idx
         done = False
         step_idx = 0
         ep_return = 0.0
-        accepts = 0
+        actions_this_episode: list[Tuple[int, int]] = []
 
         while not done:
             if schedule_label == "EZ":
                 action = ez_helper.select_action(agent.q[obs])  # type: ignore[arg-type]
             else:
-                epsilon = eps_fn(ep, 0) if eps_fn is not None else 0.0
+                epsilon = eps_fn(ep, step_idx) if eps_fn is not None else 0.0
                 action = agent.act(obs, epsilon)
-            if action == 1:  
-                accepts += 1
-            next_obs, reward, terminated, truncated, _ = env.step(action)
+
+
+
+
+            next_obs, reward, terminated, truncated, info = env.step(action)
+            # info["profile_idx"] refers to current profile
+            profile_idx = info["profile_idx"]
+            actions_this_episode.append((profile_idx, action))
             agent.update(obs, action, reward, next_obs)
             obs = next_obs
 
@@ -86,9 +97,10 @@ def run_single_experiment(
             step_idx += 1
             done = terminated or truncated
 
+        episode_actions.append(actions_this_episode)
         episode_returns.append(ep_return)
 
-    return episode_returns, accepts
+    return episode_returns, profile_list, episode_actions
 
 
 def main() -> None:
@@ -167,16 +179,34 @@ def main() -> None:
 
     for label, eps_fn in variants:
         for seed in seeds:
-            ep_returns, ep_accepts = run_single_experiment(
+            ep_returns, ep_profile_list, ep_action_list = run_single_experiment(
                 label, eps_fn, seed, n_episodes, horizon, delay, k_repeat, gamma, alpha, eps
             )
+            # save profile list for this run
+            profiles_file = results_dir / f"profiles_{label}_{seed}.csv"
+            with profiles_file.open("w", newline="") as pf:
+                writer = csv.writer(pf)
+                writer.writerow(["profile_idx","age","region","risk_score"])
+                for idx, p in enumerate(ep_profile_list):
+                    writer.writerow([idx, p.age, p.region, p.risk_score])
+
+            # save action list for this run
+            actions_file = results_dir / f"actions_{label}_{seed}.csv"
+            with actions_file.open("w", newline="") as af:
+                writer = csv.writer(af)
+                writer.writerow(["episode","step","profile_idx","action"])
+                for ep_idx, steps in enumerate(ep_action_list, start=1):
+                    for step_idx, (p_idx, act) in enumerate(steps):
+                        writer.writerow([ep_idx, step_idx, p_idx, act])
+
+            # summary rows
             for ep_idx, r in enumerate(ep_returns, start=1):
-                all_rows.append((label, seed, ep_idx, r, ep_accepts))
+                all_rows.append((label, seed, ep_idx, r))
 
     out_file = results_dir / "experiment_summary.csv"
     with out_file.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["variant","seed","episode","return", "accepts"])
+        writer.writerow(["variant","seed","episode","return","accepts"])
         writer.writerows(all_rows)
 
     print(f"Results saved to → {out_file}")
