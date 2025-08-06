@@ -109,7 +109,6 @@ class InsuranceEnv(gym.Env):
         self.t += 1
         terminated = self.t >= self.horizon
         self.current_state = self._sample_state()
-
         return np.int64(self.current_state), reward, terminated, False, {}
 
     def _price(self, p: Profile) -> float:
@@ -149,3 +148,7 @@ class InsuranceEnv(gym.Env):
         """Sample a heavy-tailed loss from a Pareto distribution."""
         u = self.rng.random()
         return self.pareto_xm / (u ** (1.0 / self.pareto_alpha))
+
+    def _get_profiles(self) -> list[Profile]:
+        """Get the list of all profiles."""
+        return self.profiles
