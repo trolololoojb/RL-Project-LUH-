@@ -61,12 +61,14 @@ def run_single_experiment(
     )
 
     episode_returns: list[float] = []
-
+  # count of accepted profiles
     for ep in range(n_episodes):
         obs, _ = env.reset()  # reset the environment and get initial observation
+        print(obs)  # debug: print initial observation
         done = False
         step_idx = 0
         ep_return = 0.0
+        accepts = 0
 
         while not done:
             if schedule_label == "EZ":
@@ -74,7 +76,8 @@ def run_single_experiment(
             else:
                 epsilon = eps_fn(ep, 0) if eps_fn is not None else 0.0
                 action = agent.act(obs, epsilon)
-
+            if action == 1:  
+                accepts += 1
             next_obs, reward, terminated, truncated, _ = env.step(action)
             agent.update(obs, action, reward, next_obs)
             obs = next_obs
@@ -85,7 +88,7 @@ def run_single_experiment(
 
         episode_returns.append(ep_return)
 
-    return episode_returns
+    return episode_returns, accepts
 
 
 def main() -> None:
@@ -160,20 +163,20 @@ def main() -> None:
         ("EZ", None),
     ]
 
-    all_rows: List[Tuple[str, int, int, float]] = []  # variant, seed, episode, return
+    all_rows: List[Tuple[str, int, int, float, int]] = []  # variant, seed, episode, return, accepts
 
     for label, eps_fn in variants:
         for seed in seeds:
-            ep_returns = run_single_experiment(
+            ep_returns, ep_accepts = run_single_experiment(
                 label, eps_fn, seed, n_episodes, horizon, delay, k_repeat, gamma, alpha, eps
             )
             for ep_idx, r in enumerate(ep_returns, start=1):
-                all_rows.append((label, seed, ep_idx, r))
+                all_rows.append((label, seed, ep_idx, r, ep_accepts))
 
     out_file = results_dir / "experiment_summary.csv"
     with out_file.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["variant","seed","episode","return"])
+        writer.writerow(["variant","seed","episode","return", "accepts"])
         writer.writerows(all_rows)
 
     print(f"Results saved to → {out_file}")
