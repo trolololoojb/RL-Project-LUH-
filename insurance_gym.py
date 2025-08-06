@@ -72,6 +72,7 @@ class InsuranceEnv(gym.Env):
         # Buffer holds delayed claim payouts
         self.buffer = deque([0.0] * (delay + 1), maxlen=delay + 1)
         self.current_state = 0
+        self.current_profile_idx = 0  # store actual drawn profile index
         self.t = 0
 
     def reset(self, *, seed: Optional[int] = None, options=None):
@@ -82,8 +83,10 @@ class InsuranceEnv(gym.Env):
         self.buffer.extend([0.0] * (self.delay + 1)) # buffer get filled with zeros for the delay period
         self.t = 0
         # Sample initial customer
-        self.current_state = self._sample_state()
-        return np.int64(self.current_state), {}
+        idx = int(self.rng.integers(self.n_profiles))
+        self.current_profile_idx = idx
+        self.current_state = self._encode(self.profiles[idx])
+        return np.int64(self.current_state), {"profile_idx": idx}
 
     def step(self, action: int):
         assert self.action_space.contains(action)
@@ -92,7 +95,7 @@ class InsuranceEnv(gym.Env):
         reward = self.buffer.popleft() # get the first element (oldest payout)
 
         # Decide on underwriting action
-        idx = self._state_to_profile_idx(self.current_state)
+        idx = self.current_profile_idx
         if action == 1:
             # Accept: collect premium and possibly queue a claim loss
             reward += float(self.premiums[idx])
@@ -108,8 +111,12 @@ class InsuranceEnv(gym.Env):
         # Advance time step
         self.t += 1
         terminated = self.t >= self.horizon
-        self.current_state = self._sample_state()
-        return np.int64(self.current_state), reward, terminated, False, {}
+        # Sample next customer
+        next_idx = int(self.rng.integers(self.n_profiles))
+        self.current_profile_idx = next_idx
+        self.current_state = self._encode(self.profiles[next_idx])
+
+        return np.int64(self.current_state), reward, terminated, False, {"profile_idx": idx}
 
     def _price(self, p: Profile) -> float:
         """Compute premium based on age and region."""
@@ -126,29 +133,13 @@ class InsuranceEnv(gym.Env):
         prob = base + age_factor + region_risk[p.region]
         return float(np.clip(prob, 0.0, 0.9))
 
-    def _sample_state(self) -> int:
-        """Pick a random profile and bucket it."""
-        idx = int(self.rng.integers(self.n_profiles))
-        return self._encode(self.profiles[idx])
-
     def _encode(self, p: Profile) -> int:
         """Turn profile into a single bucket ID."""
         age_bin = min((p.age - AGE_MIN) // AGE_BIN_SIZE, N_AGE_BINS - 1)
         risk_bin = min(int(p.risk_score // RISK_BIN_SIZE), N_RISK_BINS - 1)
         return age_bin * (N_REGIONS * N_RISK_BINS) + p.region * N_RISK_BINS + risk_bin
 
-    def _state_to_profile_idx(self, state: int) -> int:
-        """Find one profile matching the given bucket."""
-        for i, p in enumerate(self.profiles):
-            if self._encode(p) == state:
-                return i
-        return 0
-
     def _pareto(self) -> float:
         """Sample a heavy-tailed loss from a Pareto distribution."""
         u = self.rng.random()
         return self.pareto_xm / (u ** (1.0 / self.pareto_alpha))
-
-    def _get_profiles(self) -> list[Profile]:
-        """Get the list of all profiles."""
-        return self.profiles
