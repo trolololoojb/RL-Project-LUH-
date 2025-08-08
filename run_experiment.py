@@ -10,11 +10,11 @@ from typing import Callable, List, Tuple
 from datetime import datetime
 
 import numpy as np
+import torch
 
 from insurance_gym import InsuranceEnv
 from source.exploration_schedules import fixed_eps_schedule, EZGreedy
-from source.qlearner import QLearner
-
+from source.DQN import DQNAgent
 
 # run_experiment.py
 # Benchmark different epsilon strategies (Fixed, EZ-Greedy) on the InsuranceEnv.
@@ -32,6 +32,13 @@ def get_git_commit() -> str:
         return "unknown"
 
 
+def to_onehot(state: int, dim: int) -> np.ndarray:
+    """Convert discrete state index to one-hot encoded vector."""
+    vec = np.zeros(dim, dtype=np.float32)
+    vec[state] = 1.0
+    return vec
+
+
 def run_single_experiment(
     schedule_label: str,  # which exploration schedule to use
     eps_fn: Callable[[int, int], float] | None,  # function to compute epsilon, or None for EZ schedule
@@ -47,12 +54,16 @@ def run_single_experiment(
     """Run one trial and return returns, total accepts, profiles list, and actions per episode."""
     # initialize environment and agent
     env = InsuranceEnv(delay=delay, horizon=horizon, seed=seed)
-    agent = QLearner(
-        n_states=env.observation_space.n,
-        n_actions=env.action_space.n,
-        alpha=alpha,
+
+    agent = DQNAgent(
+        state_size=env.observation_space.n,
+        action_size=env.action_space.n,
+        hidden_dims=(128,128),
+        buffer_capacity=10000,
+        batch_size=64,
         gamma=gamma,
-        seed=seed,
+        lr=alpha,            # α als Learning Rate
+        sync_every=1000,
     )
 
     # retrieve static profiles
@@ -65,7 +76,6 @@ def run_single_experiment(
     )
 
     episode_returns: list[float] = []
-
     episode_actions: list[list[Tuple[int, int]]] = []  # list per episode of (step_profile_idx, action)
 
     for ep in range(n_episodes):
@@ -77,25 +87,32 @@ def run_single_experiment(
         actions_this_episode: list[Tuple[int, int]] = []
 
         while not done:
+            # State-Encoding
+            state_vec = to_onehot(obs, env.observation_space.n)
+
+            # Aktion auswählen
             if schedule_label == "EZ":
-                action = ez_helper.select_action(agent.q[obs])  # type: ignore[arg-type]
+                q_vals = agent.policy_net(torch.from_numpy(state_vec).unsqueeze(0).to(agent.device))
+                action = ez_helper.select_action(q_vals.detach().cpu().numpy()[0])  # type: ignore[arg-type]
             else:
                 epsilon = eps_fn(ep, step_idx) if eps_fn is not None else 0.0
-                action = agent.act(obs, epsilon)
+                action = agent.select_action(state_vec, epsilon)
 
-
-
-
+            # Umgebungsschritt
             next_obs, reward, terminated, truncated, info = env.step(action)
-            # info["profile_idx"] refers to current profile
+            done = terminated or truncated
+
+            # Store & Learn
+            next_state_vec = to_onehot(next_obs, env.observation_space.n)
+            agent.store_transition(state_vec, action, reward, next_state_vec, done)
+            agent.optimize()
+
+            # Logging
             profile_idx = info["profile_idx"]
             actions_this_episode.append((profile_idx, action))
-            agent.update(obs, action, reward, next_obs)
-            obs = next_obs
-
             ep_return += (gamma ** step_idx) * reward
+            obs = next_obs
             step_idx += 1
-            done = terminated or truncated
 
         episode_actions.append(actions_this_episode)
         episode_returns.append(ep_return)
@@ -175,13 +192,14 @@ def main() -> None:
         ("EZ", None),
     ]
 
-    all_rows: List[Tuple[str, int, int, float, int]] = []  # variant, seed, episode, return, accepts
+    all_rows: List[Tuple[str, int, int, float]] = []  # variant, seed, episode, return
 
     for label, eps_fn in variants:
         for seed in seeds:
             ep_returns, ep_profile_list, ep_action_list = run_single_experiment(
                 label, eps_fn, seed, n_episodes, horizon, delay, k_repeat, gamma, alpha, eps
             )
+
             # save profile list for this run
             profiles_file = results_dir / f"profiles_{label}_{seed}.csv"
             with profiles_file.open("w", newline="") as pf:
@@ -206,7 +224,7 @@ def main() -> None:
     out_file = results_dir / "experiment_summary.csv"
     with out_file.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["variant","seed","episode","return","accepts"])
+        writer.writerow(["variant","seed","episode","return"])
         writer.writerows(all_rows)
 
     print(f"Results saved to → {out_file}")
