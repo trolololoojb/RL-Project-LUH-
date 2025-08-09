@@ -48,9 +48,9 @@ def run_single_experiment(
     delay: int,  # delay parameter for claims in the environment
     k_repeat: int,  # number of steps to repeat an exploratory action in EZ-Greedy
     gamma: float,  # discount factor for future rewards
-    alpha: float,  # learning rate for the Q-learning agent
+    alpha: float,  # learning rate  for the DQN agent
     eps: float,  # base epsilon for fixed ε-greedy strategy
-) -> Tuple[list[float], int, list, list]:
+) -> Tuple[list[float], list, list]:
     """Run one trial and return returns, profiles list, and actions per episode."""
     # initialize environment and agent
     env = InsuranceEnv(delay=delay, horizon=horizon, seed=seed)
@@ -125,7 +125,7 @@ def main() -> None:
         description="Insurance Underwriting Experiment"
     )
     parser.add_argument(
-        "--episodes", "-e", type=int, default=300,
+        "--episodes", "-p", type=int, default=300,
         help="Number of episodes per seed"
     )
     parser.add_argument(
@@ -145,7 +145,7 @@ def main() -> None:
         help="Base ε for fixed ε-greedy"
     )
     parser.add_argument(
-        "--alpha", "-a", type=float, default=0.1,
+        "--alpha", "-a", type=float, default=1e-3,
         help="Learning rate α"
     )
     parser.add_argument(
