@@ -44,7 +44,7 @@ def run_single_experiment(
     alpha: float,  # learning rate for the Q-learning agent
     eps: float,  # base epsilon for fixed ε-greedy strategy
 ) -> Tuple[list[float], int, list, list]:
-    """Run one trial and return returns, total accepts, profiles list, and actions per episode."""
+    """Run one trial and return returns, profiles list, and actions per episode."""
     # initialize environment and agent
     env = InsuranceEnv(delay=delay, horizon=horizon, seed=seed)
     agent = QLearner(
@@ -216,7 +216,7 @@ def main() -> None:
     out_file = results_dir / "experiment_summary.csv"
     with out_file.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["variant","seed","episode","return","accepts"])
+        writer.writerow(["variant","seed","episode","return"])
         writer.writerows(all_rows)
 
     print(f"Results saved to → {out_file}")
