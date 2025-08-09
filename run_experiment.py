@@ -141,7 +141,7 @@ def main() -> None:
         help="Repetition length for EZ-Greedy (defaults to delay)"
     )
     parser.add_argument(
-        "--eps", "-ε", type=float, default=0.1,
+        "--eps", "-e", type=float, default=0.1,
         help="Base ε for fixed ε-greedy"
     )
     parser.add_argument(
@@ -156,6 +156,10 @@ def main() -> None:
         "--seed", "-s", type=int, default=0,
         help="Starting seed (uses seed, seed+1, … seed+9)"
     )
+    parser.add_argument(
+        "--scale", "-c", type=int, default=0,
+        help="EZ Scaling (0 for no scaling, 1 for scaling)"
+    )
     args = parser.parse_args()
 
     n_episodes = args.episodes
@@ -166,7 +170,12 @@ def main() -> None:
     alpha = args.alpha
     gamma = args.gamma
     base_seed = args.seed
+    scaling = args.scale
     seeds = list(range(base_seed, base_seed + 10))
+    if scaling == 1:
+        eps_ez = eps / (k_repeat - eps * (k_repeat - 1)) # scale ε for EZ-Greedy
+    else:
+        eps_ez = eps
 
     # create timestamped results directory
     timestamp = datetime.now().strftime("%Y_%m_%d_%H%M%S")
@@ -196,8 +205,9 @@ def main() -> None:
 
     for label, eps_fn in variants:
         for seed in seeds:
+            eps_used = eps_ez if label == "EZ" else eps
             ep_returns, ep_profile_list, ep_action_list = run_single_experiment(
-                label, eps_fn, seed, n_episodes, horizon, delay, k_repeat, gamma, alpha, eps
+                label, eps_fn, seed, n_episodes, horizon, delay, k_repeat, gamma, alpha, eps_used
             )
 
             # save profile list for this run
