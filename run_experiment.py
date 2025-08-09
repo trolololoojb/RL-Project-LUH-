@@ -65,7 +65,7 @@ def run_single_experiment(
     env = InsuranceEnv(horizon=horizon, seed=seed) # parameters for the environment
 
     agent = DQNAgent(
-        state_size=env.observation_space.n,
+        state_size=env.observation_space.shape[0],
         action_size=env.action_space.n,
         hidden_dims=(128,128),
         buffer_capacity=10000,
@@ -98,7 +98,7 @@ def run_single_experiment(
 
         while not done:
             # State-Encoding
-            state_vec = to_onehot(obs, env.observation_space.n)
+            state_vec = obs.astype(np.float32)
 
             # Aktion auswählen
             if schedule_label == "EZ":
@@ -113,7 +113,7 @@ def run_single_experiment(
             done = terminated or truncated
 
             # Store & Learn
-            next_state_vec = to_onehot(next_obs, env.observation_space.n)
+            next_state_vec = next_obs.astype(np.float32)
             agent.store_transition(state_vec, action, reward, next_state_vec, done)
             agent.optimize()
 
@@ -145,11 +145,17 @@ def main() -> None:
         help="Maximum number of steps per episode"
     )
     parser.add_argument(
-        "--delay", "-d", type=int, default=10,
-        help="Delay parameter for claims"
+        "--delay_min", "-dmi", type=int, default=10,
+        help="Min Delay parameter for claims"
     )
+
     parser.add_argument(
-        "--k_repeat", "-k", type=int, default=None,
+        "--delay_max", "-dma", type=int, default=10,
+        help="Max Delay parameter for claims"
+    )
+
+    parser.add_argument(
+        "--k_repeat", "-k", type=int, default=4,
         help="Repetition length for EZ-Greedy (defaults to delay)"
     )
     parser.add_argument(
@@ -176,8 +182,9 @@ def main() -> None:
 
     n_episodes = args.episodes
     horizon = args.horizon
-    delay = args.delay
-    k_repeat = args.k_repeat or delay
+    min_delay = args.delay_min
+    max_delay = args.delay_max
+    k_repeat = args.k_repeat 
     eps = args.eps
     alpha = args.alpha
     gamma = args.gamma
@@ -198,12 +205,14 @@ def main() -> None:
         "git_commit": get_git_commit(),
         "episodes": n_episodes,
         "horizon": horizon,
-        "delay": delay,
+        "min_delay": min_delay,
+        "max_delay": max_delay,
         "k_repeat": k_repeat,
         "eps": eps,
         "alpha": alpha,
         "gamma": gamma,
         "seeds": seeds,
+        "scaling": scaling,
     }
     with (results_dir / "run_meta.json").open("w") as mf:
         json.dump(meta, mf, indent=2)
