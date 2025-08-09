@@ -69,7 +69,8 @@ class DQNAgent:
         gamma=0.99,
         lr=1e-3,
         sync_every=1000,
-        device=None
+        device=None,
+        seed: int | None = None # random seed for reproducibility
     ):
         # Setup device and networks
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
