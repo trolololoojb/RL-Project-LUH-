@@ -2,3 +2,4 @@ gymnasium
 numpy
 pandas
 matplotlib
+torch
