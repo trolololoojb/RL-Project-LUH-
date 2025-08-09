@@ -51,7 +51,7 @@ def run_single_experiment(
     alpha: float,  # learning rate for the Q-learning agent
     eps: float,  # base epsilon for fixed ε-greedy strategy
 ) -> Tuple[list[float], int, list, list]:
-    """Run one trial and return returns, total accepts, profiles list, and actions per episode."""
+    """Run one trial and return returns, profiles list, and actions per episode."""
     # initialize environment and agent
     env = InsuranceEnv(delay=delay, horizon=horizon, seed=seed)
 
