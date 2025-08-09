@@ -8,11 +8,13 @@ from pathlib import Path
 from statistics import mean, stdev
 from typing import Callable, List, Tuple
 from datetime import datetime
+import sys  # NEU
 
 import numpy as np
 import torch
 
-from insurance_gym import InsuranceEnv
+#from insurance_gym import InsuranceEnv
+from insurance_gym_2 import InsuranceEnvV2 as InsuranceEnv
 from source.exploration_schedules import fixed_eps_schedule, EZGreedy
 from source.DQN import DQNAgent
 
@@ -22,6 +24,12 @@ from source.DQN import DQNAgent
 # Generates a timestamped results folder containing experiment_summary.csv, run_meta.json,
 # profiles_<variant>_<seed>.csv and actions_<variant>_<seed>.csv.
 
+def _print_progress(current: int, total: int, schedule_label: str, seed: int) -> None:  # NEU
+    width = 30
+    filled = int(width * current / total)
+    bar = "#" * filled + "-" * (width - filled)
+    msg = f"\r[{schedule_label} seed {seed}] |{bar}| {current}/{total}"
+    print(msg, end="", flush=True)
 
 def get_git_commit() -> str:
     """Return the current Git commit hash."""
@@ -45,15 +53,16 @@ def run_single_experiment(
     seed: int,  # random seed for reproducibility
     n_episodes: int,  # number of episodes to run
     horizon: int,  # maximum number of steps per episode
-    delay: int,  # delay parameter for claims in the environment
+    # delay_min: int,  # min delay parameter for claims in the environment
+    # delay_max: int,  # max delay parameter for claims in the environment
     k_repeat: int,  # number of steps to repeat an exploratory action in EZ-Greedy
     gamma: float,  # discount factor for future rewards
-    alpha: float,  # learning rate  for the DQN agent
+    alpha: float,  # learning rate for the Q-learning agent
     eps: float,  # base epsilon for fixed ε-greedy strategy
-) -> Tuple[list[float], list, list]:
+) -> Tuple[list[float], int, list, list]:
     """Run one trial and return returns, profiles list, and actions per episode."""
     # initialize environment and agent
-    env = InsuranceEnv(delay=delay, horizon=horizon, seed=seed)
+    env = InsuranceEnv(horizon=horizon, seed=seed) # parameters for the environment
 
     agent = DQNAgent(
         state_size=env.observation_space.n,
@@ -64,7 +73,8 @@ def run_single_experiment(
         gamma=gamma,
         lr=alpha,            # α als Learning Rate
         sync_every=1000,
-    )
+        seed=seed,
+    ) # DQN agent with specified parameters
 
     # retrieve static profiles
     profile_list = env.profiles
@@ -75,7 +85,7 @@ def run_single_experiment(
         EZGreedy(base_eps=eps, k=k_repeat, rng=rng) if schedule_label == "EZ" else None
     )
 
-    episode_returns: list[float] = []
+    episode_returns: list[float] = [] # list of returns per episode
     episode_actions: list[list[Tuple[int, int]]] = []  # list per episode of (step_profile_idx, action)
 
     for ep in range(n_episodes):
@@ -116,7 +126,9 @@ def run_single_experiment(
 
         episode_actions.append(actions_this_episode)
         episode_returns.append(ep_return)
+        _print_progress(ep + 1, n_episodes, schedule_label, seed)  # NEU
 
+    print()  # NEU: Zeilenumbruch nach der Fortschrittsanzeige
     return episode_returns, profile_list, episode_actions
 
 
@@ -145,7 +157,7 @@ def main() -> None:
         help="Base ε for fixed ε-greedy"
     )
     parser.add_argument(
-        "--alpha", "-a", type=float, default=1e-3,
+        "--alpha", "-a", type=float, default=0.1,
         help="Learning rate α"
     )
     parser.add_argument(
@@ -207,7 +219,7 @@ def main() -> None:
         for seed in seeds:
             eps_used = eps_ez if label == "EZ" else eps
             ep_returns, ep_profile_list, ep_action_list = run_single_experiment(
-                label, eps_fn, seed, n_episodes, horizon, delay, k_repeat, gamma, alpha, eps_used
+                label, eps_fn, seed, n_episodes, horizon, k_repeat, gamma, alpha, eps_used
             )
 
             # save profile list for this run
