@@ -5,13 +5,15 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Optional
 
+from source.get_risks import get_base_risk, get_region_risk, get_age_risk
+
 __all__ = ["InsuranceEnv"]
 
 # Bucketing constants
 AGE_MIN, AGE_MAX = 18, 80
 AGE_BIN_SIZE = 5
 N_AGE_BINS = (AGE_MAX - AGE_MIN) // AGE_BIN_SIZE + 1
-N_REGIONS = 5
+N_REGIONS = 6
 RISK_BIN_SIZE = 0.1
 N_RISK_BINS = int(1 / RISK_BIN_SIZE)
 N_STATE_BUCKETS = N_AGE_BINS * N_REGIONS * N_RISK_BINS
@@ -122,15 +124,13 @@ class InsuranceEnv(gym.Env):
         """Compute premium based on age and region."""
         base = 200.0
         age_comp = 4.0 * (p.age - AGE_MIN)
-        region_fees = [0.0, 20.0, 40.0, 60.0, 80.0]
+        region_fees = [0.0, 20.0, 40.0, 60.0, 80.0, 100.0]
         return base + age_comp + region_fees[p.region]
 
     def _claim_prob(self, p: Profile) -> float:
         """Estimate claim probability from risk score, age, and region."""
-        base = 0.02 + 0.25 * p.risk_score
-        age_factor = (p.age - AGE_MIN) / (AGE_MAX - AGE_MIN) * 0.10
-        region_risk = [0.00, 0.01, 0.03, 0.05, 0.07]
-        prob = base + age_factor + region_risk[p.region]
+        base = get_base_risk() + 0.25 * p.risk_score
+        prob = base + get_age_risk(p.age) + get_region_risk(p.region)
         return float(np.clip(prob, 0.0, 0.9))
 
     def _encode(self, p: Profile) -> int:
