@@ -176,7 +176,7 @@ class InsuranceEnvV2(gym.Env):
     def reset(self, *, seed: Optional[int] = None, options=None):
         # Reset the environment state
         if seed is not None:
-            self.rng.bit_generator.seed(seed)
+            self.rng = np.random.default_rng(seed)
         self.t = 0
         self.buffer.clear()
         self.buffer.extend([0.0] * (self.delay_max + 1))
