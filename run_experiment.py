@@ -183,16 +183,11 @@ def run_single_experiment(
                 argmax_idx = int(np.argmax(q_np)) # action with highest Q-value
                 action = ez_helper.select_action(q_np) # select action using EZ-Greedy
             else:
-                epsilon = eps_fn(ep, step_idx) if eps_fn is not None else 0.0
-                action = agent.select_action(state_vec, epsilon)
-                # Exploration grob erkennen: wenn Aktion ≠ argmax(Q)
-                if epsilon > 0.0:
-                    with torch.no_grad():
-                        q_vals = agent.policy_net(
-                            torch.from_numpy(state_vec).unsqueeze(0).to(agent.device)
-                        )
-                    if int(q_vals.argmax().item()) != int(action):
-                        exploration_steps += 1
+                epsilon = eps_fn(ep, step_idx) if eps_fn is not None else 0.0 # compute epsilon for the current episode and step
+                action, exploration = agent.select_action(state_vec, epsilon)
+                if exploration:
+                    exploration_steps += 1
+
 
             if schedule_label == "EZ":
                 steps_left_post = getattr(ez_helper, "steps_left", 0)
@@ -470,7 +465,7 @@ def main() -> None:
             with train_file.open("w", newline="") as tf:
                 fieldnames = [
                     "variant","seed","episode","return","steps",
-                    "accept_rate","avg_premium","loss_paid_sum","claims_count",
+                    "accept_rate","avg_premium","loss_paid_sum",
                     "min_capital","final_capital","bankrupt","time_to_ruin",
                     "ez_steps","ez_phases","ez_repeats",
                     "exploration_steps","exploration_rate",
