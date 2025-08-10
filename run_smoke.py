@@ -1,4 +1,4 @@
-from insurance_gym import InsuranceEnv
+from old_trys.insurance_gym import InsuranceEnv
 from source.qlearner import QLearner
 
 env = InsuranceEnv(delay=5, seed=0)

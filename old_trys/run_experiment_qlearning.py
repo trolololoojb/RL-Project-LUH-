@@ -11,7 +11,7 @@ from datetime import datetime
 
 import numpy as np
 
-from insurance_gym import InsuranceEnv
+from old_trys.insurance_gym import InsuranceEnv
 from source.exploration_schedules import fixed_eps_schedule, EZGreedy
 from source.qlearner import QLearner
 
