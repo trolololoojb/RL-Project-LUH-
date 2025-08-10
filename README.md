@@ -23,4 +23,4 @@ bis der Agent sein Ziel erreichen kann.
 So sitzt er bis spät, bei Kerzenschein,
 in einer Welt aus Zuständen, groß und klein,
 und denkt sich: „Wie schön, wenn Maschinen verstehen –
-doch am schönsten ist’s, den Weg dorthin zu gehen.“
+doch am schönsten ist’s, den Weg dorthin zu gehen.
