@@ -185,19 +185,19 @@ class InsuranceEnvV2(gym.Env):
         self.regime = int(self.rng.integers(N_REGIMES))
         self.current_profile_idx = int(self.rng.integers(self.n_profiles))
         obs = self._get_obs(self.profiles[self.current_profile_idx])
-        return obs, {"profile_idx": self.current_profile_idx, "regime": self.regime}
+        return obs, {"profile_idx": self.current_profile_idx, "regime": self.regime, "capital": self.capital, "liabilities": self.liabilities_total}
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
         # Execute one step in the environment
         assert self.action_space.contains(action) # check if action is valid
         reward = 0.0
-
+        premium = 0.0
         # Payouts due today
         payout = self.buffer.popleft()
         self.buffer.append(0.0)  # important: keep deque length constant
         reward += payout  # payout is negative or 0
         self.capital += payout
-        self.liabilities_total = max(0.0, self.liabilities_total + payout)  # payout <= 0
+        self.liabilities_total = max(0.0, self.liabilities_total + payout)  # ensure non-negative liabilities
 
         # Action on current customer
         p = self.profiles[self.current_profile_idx] # get current profile
@@ -246,5 +246,5 @@ class InsuranceEnvV2(gym.Env):
         self.current_profile_idx = int(self.rng.integers(self.n_profiles)) # sample next profile
         next_obs = self._get_obs(self.profiles[self.current_profile_idx]) # get next observation
         info = {"profile_idx": self.current_profile_idx, "regime": self.regime,
-                "capital": self.capital, "liabilities": self.liabilities_total, "terminal_paid": float(terminal_paid)}
+                "capital": self.capital, "liabilities": self.liabilities_total, "terminal_paid": float(terminal_paid),"premium": float(premium), "paid_now": float(payout),}
         return next_obs, float(reward), terminated, False, info
