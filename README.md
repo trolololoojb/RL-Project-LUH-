@@ -1,8 +1,7 @@
 # RL-Project-LUH-
-In a simulated insurance-underwriting task with heavy-tailed rewards and delayed returns, does ez-greedy exploration yield higher discounted return and safer convergence than fixed ϵ-greedy?
 
-# Starting Experiment
-example call: python run_experiment.py --episodes 100 --delay 5 --eps 0.2 --seed 42
+In a synthetic insurance-underwriting MDP with Pareto heavy-tailed losses and delayed payouts, does rate-corrected, k-persistent ε-greedy (EZ) achieve higher discounted return and lower ruin risk (bankruptcy rate / CVaR of episodic returns) than fixed and annealed ε-greedy, under the same DQN and training budget?
+
 
 # Johann, der Agentenbändiger
 
