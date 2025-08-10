@@ -10,6 +10,7 @@ def annealed_linear(eps_start: float, eps_end: float, horizon: int, n_episodes: 
     """
     total_steps = max(1, horizon * n_episodes)
     def fn(episode: int, t_step: int) -> float:
+        # Calculate the current step in the total training process
         g = episode * horizon + t_step
         frac = min(max(g / total_steps, 0.0), 1.0)
         return eps_start + (eps_end - eps_start) * frac
@@ -42,7 +43,7 @@ class EZGreedy:
 
         # decide whether to explore new action
         if self.rng.random() < self.base_eps:
-            action = int(self.rng.integers(0, q_values.shape[0]))
+            action = int(self.rng.integers(0, q_values.shape[0])) # random action
             self.last_action = action
             self.steps_left = self.k - 1
             return action
