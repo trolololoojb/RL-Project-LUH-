@@ -1,6 +1,19 @@
 import numpy as np
 
-# Provides constant and EZ-greedy exploration strategies
+# Provides annealed, constant and EZ-greedy exploration strategies
+
+def annealed_linear(eps_start: float, eps_end: float, horizon: int, n_episodes: int):
+    """
+    Linear annealing from eps_start -> eps_end over total training steps.
+    Usage: eps_fn = annealed_linear(1.0, 0.05, horizon=500, n_episodes=2000)
+           eps = eps_fn(ep, t_step)
+    """
+    total_steps = max(1, horizon * n_episodes)
+    def fn(episode: int, t_step: int) -> float:
+        g = episode * horizon + t_step
+        frac = min(max(g / total_steps, 0.0), 1.0)
+        return eps_start + (eps_end - eps_start) * frac
+    return fn
 
 def fixed_eps_schedule(eps: float):
     """
