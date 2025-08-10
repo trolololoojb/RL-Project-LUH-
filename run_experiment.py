@@ -8,7 +8,8 @@ from pathlib import Path
 from statistics import mean, stdev
 from typing import Callable, List, Tuple
 from datetime import datetime
-import sys  # NEU
+import sys
+from source.exploration_schedules import annealed_linear
 
 import numpy as np
 import torch
@@ -46,6 +47,50 @@ def to_onehot(state: int, dim: int) -> np.ndarray:
     vec[state] = 1.0
     return vec
 
+def evaluate_policy(env, agent, n_episodes: int, gamma: float, max_steps: int, base_seed: int, block_ep: int, label: str, seed: int):
+    """Greedy-Eval (ε=0) - gibt eine Liste von dicts mit Metriken zurück."""
+    import torch, numpy as np
+    rows = []
+    for i in range(n_episodes):
+        obs, info = env.reset(seed=base_seed + i)
+        ep_return = 0.0
+        min_capital = float(info.get("capital", 0.0))
+        time_to_ruin = None
+        final_capital = min_capital
+        liabilities_end = 0.0
+        terminal_paid = 0.0
+        for t in range(max_steps):
+            s = torch.from_numpy(obs.astype(np.float32)).unsqueeze(0).to(agent.device)
+            with torch.no_grad():
+                q = agent.policy_net(s)
+            action = int(q.argmax(dim=1).item())
+            obs, reward, terminated, truncated, info = env.step(action)
+            ep_return += (gamma ** t) * float(reward)
+            cap = float(info.get("capital", min_capital))
+            min_capital = min(min_capital, cap)
+            final_capital = cap
+            liabilities_end = float(info.get("liabilities", liabilities_end))
+            terminal_paid = float(info.get("terminal_paid", terminal_paid))
+            if terminated or truncated:
+                bankrupt = 1 if cap < 0.0 else 0
+                if bankrupt and time_to_ruin is None:
+                    time_to_ruin = t
+                break
+        rows.append({
+            "block_episode": block_ep,
+            "variant": label,
+            "seed": seed,
+            "episode": i,
+            "return": ep_return,
+            "bankrupt": int(final_capital < 0.0),
+            "time_to_ruin": -1 if time_to_ruin is None else int(time_to_ruin),
+            "min_capital": min_capital,
+            "final_capital": final_capital,
+            "liabilities_end": liabilities_end,
+            "terminal_paid": terminal_paid,
+        })
+    return rows
+
 
 def run_single_experiment(
     schedule_label: str,  # which exploration schedule to use
@@ -53,8 +98,6 @@ def run_single_experiment(
     seed: int,  # random seed for reproducibility
     n_episodes: int,  # number of episodes to run
     horizon: int,  # maximum number of steps per episode
-    # delay_min: int,  # min delay parameter for claims in the environment
-    # delay_max: int,  # max delay parameter for claims in the environment
     k_repeat: int,  # number of steps to repeat an exploratory action in EZ-Greedy
     gamma: float,  # discount factor for future rewards
     alpha: float,  # learning rate for the Q-learning agent
@@ -65,8 +108,10 @@ def run_single_experiment(
     batch_size: int, # batch size for DQN updates 
     sync_every: int, # target network sync interval in environment steps                    
     bankruptcy_penalty: float,   # extra penalty applied on bankruptcy      
-    buffer_capacity: int, # replay buffer capacity (number of transitions)  
-) -> Tuple[list[float], int, list, list]:
+    buffer_capacity: int,
+    eval_every: int,
+    eval_episodes: int,
+) -> Tuple[list[float], list, list, list]:
     """Run one trial and return returns, profiles list, and actions per episode."""
     # initialize environment and agent
     env = InsuranceEnv(
@@ -100,29 +145,98 @@ def run_single_experiment(
 
     episode_returns: list[float] = [] # list of returns per episode
     episode_actions: list[list[Tuple[int, int]]] = []  # list per episode of (step_profile_idx, action)
-
+    eval_rows: list[dict] = []
+    train_rows: list[dict] = []
     for ep in range(n_episodes):
 
         obs, info = env.reset()  # reset environment and get initial state and profile_idx
+        final_capital = float(info.get("capital", 0.0))
+        liabilities_end = 0.0
+        terminal_paid = 0.0
+        min_capital = float(info.get("capital", 0.0))
+        bankrupt = 0
+        time_to_ruin = None
+        exploration_steps = 0
+        accept_count = 0
+        premium_sum = 0.0
+        loss_paid_sum = 0.0
+        claims_count = 0
         done = False
         step_idx = 0
         ep_return = 0.0
         actions_this_episode: list[Tuple[int, int]] = []
+        ez_steps = 0 
+        ez_phases = 0 
+        ez_repeats = 0 
+
 
         while not done:
             # State-Encoding
             state_vec = obs.astype(np.float32)
+            in_repeat_pre = False
+            argmax_idx = None
 
-            # Aktion auswählen
             if schedule_label == "EZ":
+                in_repeat_pre = bool(getattr(ez_helper, "steps_left", 0) > 0)
                 q_vals = agent.policy_net(torch.from_numpy(state_vec).unsqueeze(0).to(agent.device))
-                action = ez_helper.select_action(q_vals.detach().cpu().numpy()[0])  # type: ignore[arg-type]
+                q_np = q_vals.detach().cpu().numpy()[0]
+                argmax_idx = int(np.argmax(q_np))
+                action = ez_helper.select_action(q_np)
             else:
                 epsilon = eps_fn(ep, step_idx) if eps_fn is not None else 0.0
                 action = agent.select_action(state_vec, epsilon)
+                # Exploration grob erkennen: wenn Aktion ≠ argmax(Q)
+                if epsilon > 0.0:
+                    with torch.no_grad():
+                        q_vals = agent.policy_net(
+                            torch.from_numpy(state_vec).unsqueeze(0).to(agent.device)
+                        )
+                    if int(q_vals.argmax().item()) != int(action):
+                        exploration_steps += 1
 
-            # Umgebungsschritt
+            if schedule_label == "EZ":
+                steps_left_post = getattr(ez_helper, "steps_left", 0)
+                if in_repeat_pre and steps_left_post >= 0:
+                    # wir befanden uns bereits in der Wiederholphase -> dieser Schritt ist ein Repeat
+                    ez_steps += 1
+                    ez_repeats += 1
+                else:
+                    # Start einer neuen Explorationsphase: EZ setzt steps_left = k-1
+                    if k_repeat > 1 and steps_left_post == (k_repeat - 1):
+                        ez_steps += 1
+                        ez_phases += 1
+                    elif k_repeat == 1 and int(action) != argmax_idx:
+                        # Kein Repeat möglich -> Exploration via Abweichung vom argmax
+                        ez_steps += 1
+                        ez_phases += 1
+
+            #  Step in the environment
             next_obs, reward, terminated, truncated, info = env.step(action)
+            
+            # Update capital and check for bankruptcy
+            final_capital = float(info.get("capital", final_capital))
+            liabilities_end = float(info.get("liabilities", liabilities_end))
+            terminal_paid = float(info.get("terminal_paid", terminal_paid))
+            capital_now = float(info.get("capital", min_capital))
+            min_capital = min(min_capital, capital_now)
+
+            # Acceptance / Pricing
+            if int(action) > 0:
+                accept_count += 1
+                if "premium" in info:
+                    premium_sum += float(info["premium"])
+
+            # Losses and claims
+            if "paid_now" in info:
+                loss_paid_sum += float(info["paid_now"])
+            if "claims_count" in info:
+                claims_count += int(info["claims_count"])
+
+            # Ruin check
+            if (terminated or truncated) and (capital_now < 0.0):
+                bankrupt = 1
+                if time_to_ruin is None:
+                    time_to_ruin = step_idx
             done = terminated or truncated
 
             # Store & Learn
@@ -137,12 +251,49 @@ def run_single_experiment(
             obs = next_obs
             step_idx += 1
 
+        # Finalize episode
+        accept_rate = accept_count / max(1, step_idx)
+        avg_premium = (premium_sum / max(1, accept_count)) if accept_count > 0 else 0.0
+
         episode_actions.append(actions_this_episode)
         episode_returns.append(ep_return)
+        train_rows.append({
+            "variant": schedule_label,
+            "seed": seed,
+            "episode": ep + 1,
+            "return": float(ep_return),
+            "steps": step_idx,
+            "accept_rate": float(accept_rate),
+            "avg_premium": float(avg_premium),
+            "loss_paid_sum": float(loss_paid_sum),
+            "claims_count": int(claims_count),
+            "min_capital": float(min_capital),
+            "final_capital": float(final_capital),
+            "bankrupt": int(final_capital < 0.0 or bankrupt == 1),
+            "time_to_ruin": -1 if time_to_ruin is None else int(time_to_ruin),
+            "ez_steps": int(ez_steps),
+            "ez_phases": int(ez_phases),
+            "ez_repeats": int(ez_repeats),
+            "exploration_steps": int(exploration_steps),
+            "exploration_rate": float(exploration_steps) / max(1, step_idx),
+       })
+        if (ep + 1) % max(1, eval_every) == 0 and eval_episodes > 0:
+            eval_rows.extend(
+                evaluate_policy(
+                    env, agent,
+                    n_episodes=eval_episodes,
+                    gamma=gamma,
+                    max_steps=horizon,
+                    base_seed=seed * 10_000 + (ep + 1) * 100,  # separater Seed-Bereich
+                    block_ep=ep + 1,
+                    label=schedule_label,
+                    seed=seed,
+                )
+            )
         _print_progress(ep + 1, n_episodes, schedule_label, seed)
 
-    print()  # NEU: Zeilenumbruch nach der Fortschrittsanzeige
-    return episode_returns, profile_list, episode_actions
+    print() # Newline after progress bar
+    return episode_returns, profile_list, episode_actions, eval_rows, train_rows
 
 
 def main() -> None:
@@ -158,12 +309,12 @@ def main() -> None:
         help="Maximum number of steps per episode"
     )
     parser.add_argument(
-        "--delay_min", "-dmi", type=int, default=10,
+        "--delay_min", "-dmi", type=int, default=8,
         help="Min Delay parameter for claims"
     )
 
     parser.add_argument(
-        "--delay_max", "-dma", type=int, default=10,
+        "--delay_max", "-dma", type=int, default=25,
         help="Max Delay parameter for claims"
     )
 
@@ -176,11 +327,11 @@ def main() -> None:
         help="Base ε for fixed ε-greedy"
     )
     parser.add_argument(
-        "--alpha", "-a", type=float, default=1e-3,
+        "--alpha", "-a", type=float, default=0.0004,
         help="Learning rate α"
     )
     parser.add_argument(
-        "--gamma", "-g", type=float, default=0.99,
+        "--gamma", "-g", type=float, default=0.999,
         help="Discount factor γ"
     )
     parser.add_argument(
@@ -192,24 +343,40 @@ def main() -> None:
         help="EZ Scaling (0 for no scaling, 1 for scaling)"
     )
     parser.add_argument(
-        "--bankruptcy_penalty", "-bp", type=float, default=100_000.0,
+        "--bankruptcy_penalty", "-bp", type=float, default=300_000.0,
         help="Extra penalty applied on bankruptcy"
     )
     parser.add_argument(
-        "--hidden_dims", "-hd", type=str, default="128,128",
+        "--hidden_dims", "-hd", type=str, default="256,256",
         help="Comma-separated hidden layer sizes for the DQN, e.g. '128,128' or '256,256,128'"
     )
     parser.add_argument(
-        "--batch_size", "-bs", type=int, default=64,
+        "--batch_size", "-bs", type=int, default=128,
         help="Batch size for DQN updates"
     )
     parser.add_argument(
-        "--sync_every", "-se", type=int, default=1000,
+        "--sync_every", "-se", type=int, default=750,
         help="Target network sync interval in environment steps"
     )
     parser.add_argument(
-        "--buffer_capacity", "-bc", type=int, default=100_000,
+        "--buffer_capacity", "-bc", type=int, default=200_000,
         help="Replay buffer capacity (number of transitions)"
+    )
+    parser.add_argument(
+        "--eps_start", "-es", type=float, default=1.0,
+        help="Starting ε for the annealed schedule"
+    )
+    parser.add_argument(
+        "--eps_end", "-ee", type=float, default=0.05,
+        help="Final ε for the annealed schedule"
+    )
+    parser.add_argument(
+    "--eval_every", type=int, default=100,
+    help="Run an evaluation block every N training episodes"
+    )
+    parser.add_argument(
+        "--eval_episodes", type=int, default=10,
+        help="Number of eval episodes per evaluation block"
     )
     args = parser.parse_args()
 
@@ -229,7 +396,12 @@ def main() -> None:
     gamma = args.gamma
     base_seed = args.seed
     scaling = args.scale
-    seeds = list(range(base_seed, base_seed + 1))
+    eps_start = args.eps_start
+    eps_end = args.eps_end
+    eval_every=args.eval_every
+    eval_episodes=args.eval_episodes
+
+    seeds = list(range(base_seed, base_seed + 5))
     if scaling == 1:
         eps_ez = eps / (k_repeat - eps * (k_repeat - 1)) # scale ε for EZ-Greedy
     else:
@@ -260,14 +432,16 @@ def main() -> None:
     variants: List[Tuple[str, Callable[[int, int], float] | None]] = [
         ("Fixed", fixed_eps_schedule(eps)),
         ("EZ", None),
+        ("Annealed", annealed_linear(eps_start, eps_end, horizon, n_episodes)),
     ]
+
 
     all_rows: List[Tuple[str, int, int, float]] = []  # variant, seed, episode, return
 
     for label, eps_fn in variants:
         for seed in seeds:
             eps_used = eps_ez if label == "EZ" else eps
-            ep_returns, ep_profile_list, ep_action_list = run_single_experiment(
+            ep_returns, ep_profile_list, ep_action_list, eval_rows, train_rows = run_single_experiment(
                 label, eps_fn, seed, n_episodes, horizon, k_repeat, gamma, alpha,
                 eps_used, min_delay, max_delay,
                 hidden_dims=hidden_dims,
@@ -275,6 +449,8 @@ def main() -> None:
                 sync_every=sync_every,
                 bankruptcy_penalty=bankruptcy_penalty,
                 buffer_capacity=buffer_capacity,
+                eval_every=eval_every,
+                eval_episodes=eval_episodes,
             )
 
             # save profile list for this run
@@ -293,6 +469,34 @@ def main() -> None:
                 for ep_idx, steps in enumerate(ep_action_list, start=1):
                     for step_idx, (p_idx, act) in enumerate(steps):
                         writer.writerow([ep_idx, step_idx, p_idx, act])
+
+            # save training metrics (per episode)
+            train_file = results_dir / f"train_metrics_{label}_{seed}.csv"
+            with train_file.open("w", newline="") as tf:
+                fieldnames = [
+                    "variant","seed","episode","return","steps",
+                    "accept_rate","avg_premium","loss_paid_sum","claims_count",
+                    "min_capital","final_capital","bankrupt","time_to_ruin",
+                    "ez_steps","ez_phases","ez_repeats",
+                    "exploration_steps","exploration_rate",
+                ]
+                writer = csv.DictWriter(tf, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in train_rows:
+                    writer.writerow(row)
+
+            # save evaluation rows if any
+            if eval_rows:
+                eval_file = results_dir / f"eval_metrics_{label}_{seed}.csv"
+                with eval_file.open("w", newline="") as ef:
+                    writer = csv.DictWriter(ef, fieldnames=[
+                        "block_episode","variant","seed","episode","return",
+                        "bankrupt","time_to_ruin","min_capital","final_capital",
+                        "liabilities_end","terminal_paid",
+                    ])
+                    writer.writeheader()
+                    for row in eval_rows:
+                        writer.writerow(row)
 
             # summary rows
             for ep_idx, r in enumerate(ep_returns, start=1):
