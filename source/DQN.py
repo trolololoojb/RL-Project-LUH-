@@ -104,11 +104,13 @@ class DQNAgent:
 
     def select_action(self, state: np.ndarray, epsilon: float) -> int:
         # Epsilon-greedy: random action or best Q-value
+        exploration = False
         if random.random() < epsilon:
-            return random.randrange(self.policy_net.net[-1].out_features)
+            exploration = True
+            return random.randrange(self.policy_net.net[-1].out_features), exploration
         state_v = torch.from_numpy(state).unsqueeze(0).to(self.device)  # add batch dim
         q_vals = self.policy_net(state_v)  # compute Q-values
-        return int(q_vals.argmax().item())  # select argmax
+        return int(q_vals.argmax().item()), exploration  # select argmax
 
     def store_transition(self, state, action, reward, next_state, done):
         # Add transition to replay buffer
