@@ -38,7 +38,7 @@ class InsuranceEnvV2(gym.Env):
 
     Observation: single discrete index encoding (profile bucket, capital bin, liability bin, regime).
     Action: 0 = reject; 1..K = accept at PRICE_FACTORS[i-1].
-    Reward: premium earned − payouts due now
+    Reward: premium earned - payouts due now
     """
 
     metadata = {"render_modes": []}
@@ -46,21 +46,21 @@ class InsuranceEnvV2(gym.Env):
     def __init__(
         self,
         *,
-        n_profiles: int = 2000, # number of unique customer profiles
+        n_profiles: int = 3000, # number of unique customer profiles
         horizon: int = 1000, # maximum number of steps per episode
         seed: Optional[int] = None, # random seed for reproducibility
         base_premium: float = 200.0, # base premium for all customers
         base_price_age: float = 4.0, # price per year of age 
         region_fees = (0.0, 20.0, 40.0, 60.0, 80.0), # region-specific fees
-        pareto_alpha: float = 1.5, # shape parameter for Pareto distribution
-        pareto_xm: float = 1.0, # scale parameter for Pareto distribution
-        delay_min: int = 3, # min delay for claim payouts
-        delay_max: int = 20, # max delay for claim payouts
+        pareto_alpha: float = 1.35, # shape parameter for Pareto distribution
+        pareto_xm: float = 1.1, # scale parameter for Pareto distribution
+        delay_min: int = 5, # min delay for claim payouts
+        delay_max: int = 25, # max delay for claim payouts
         capital_init: float = 50_000.0, # initial capital
-        bankruptcy_penalty: float = 5_000.0,  # extra penalty on bankruptcy
+        bankruptcy_penalty: float = 100_000.0,  # extra penalty on bankruptcy
         regime_switch_p: float = 0.05,   # ~expected duration 1/p
-        regime_loss_multipliers = (0.8, 1.0, 1.3), # multipliers for Pareto losses in each regime
-        regime_claim_add = (0.0, 0.02, 0.05),   # additive claim probability per regime
+        regime_loss_multipliers = (0.75, 1.0, 1.25), # multipliers for Pareto losses in each regime
+        regime_claim_add = (0.00, 0.10, 0.20),   # additive claim probability per regime
         terminal_settle: bool = True, # whether to settle all liabilities at episode end
     ):
         super().__init__()
@@ -99,11 +99,17 @@ class InsuranceEnvV2(gym.Env):
 
         # Action / observation spaces
         self.action_space = spaces.Discrete(1 + len(PRICE_FACTORS))  # 0=reject, 1..K=accept@price
-        self.observation_space = spaces.Box(
-            low=np.array([AGE_MIN, 0, 0.0, -np.inf, 0.0, 0], dtype=np.float32),
-            high=np.array([AGE_MAX, N_REGIONS - 1, 1.0, np.inf, np.inf, N_REGIMES - 1], dtype=np.float32),
-            dtype=np.float32
-        )
+        low = np.concatenate([
+            np.array([AGE_MIN], dtype=np.float32),
+            np.zeros(N_REGIONS, dtype=np.float32),
+            np.array([0.0, -np.inf, 0.0, 0.0], dtype=np.float32),
+        ])
+        high = np.concatenate([
+            np.array([AGE_MAX], dtype=np.float32),
+            np.ones(N_REGIONS, dtype=np.float32),
+            np.array([1.0, np.inf, np.inf, float(N_REGIMES - 1)], dtype=np.float32),
+        ])
+        self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
         # Runtime state
         self.t = 0
@@ -133,28 +139,38 @@ class InsuranceEnvV2(gym.Env):
 
     def _claim_prob(self, p: Profile) -> float:
         # Calculate the claim probability based on profile and regime
-        base = 0.02 + 0.25 * p.risk_score # base probability (0.02) + risk score influence (0.25)
-        age_factor = (p.age - AGE_MIN) / (AGE_MAX - AGE_MIN) * 0.10
-        region_risk = np.array([0.00, 0.01, 0.03, 0.05, 0.07], dtype=np.float32)
+        base = 0.02 + 0.1 * p.risk_score # base probability + risk score influence
+        age_factor = (p.age - AGE_MIN) / (AGE_MAX - AGE_MIN) * 0.2
+        region_risk = np.array([0.00, -0.1, 0.8, -0.2, 0.3], dtype=np.float32)
         prob = base + age_factor + region_risk[p.region] + self.regime_claim_add[self.regime] 
-        return float(np.clip(prob, 0.0, 0.95))
+        return float(np.clip(prob, 0.0, 0.80)) 
 
     def _pareto(self) -> float:
         # Sample a loss from the Pareto distribution
         u = float(self.rng.random())
-        loss = self.pareto_xm / (u ** (1.0 / self.pareto_alpha)) # sample from Pareto (xm, alpha)
-        return loss * float(self.regime_loss_multipliers[self.regime])
+        loss = self.pareto_xm / (u ** (1.0 / self.pareto_alpha))# sample from Pareto (xm, alpha)
+        #print(f"Sampled loss: {loss} with regime multiplier {self.regime_loss_multipliers[self.regime]} is {loss * float(self.regime_loss_multipliers[self.regime])}")
+        return loss * float(self.regime_loss_multipliers[self.regime]) * float(self.base_premium)
+
+    def _one_hot_region(self, r: int) -> np.ndarray:
+        # One-hot encode the region index
+        v = np.zeros(N_REGIONS, dtype=np.float32)
+        v[int(r)] = 1.0
+        return v
 
     def _get_obs(self, p: Profile) -> np.ndarray:
-        # Encode the profile and current state into a single observation vector
-        return np.array([
-            float(p.age),
-            float(p.region),
-            float(p.risk_score),
-            float(self.capital),
-            float(self.liabilities_total),
-            float(self.regime),
-        ], dtype=np.float32)
+        # Get the observation vector for a profile
+        reg_oh = self._one_hot_region(p.region)
+        return np.concatenate((
+            np.array([float(p.age)], dtype=np.float32),
+            reg_oh.astype(np.float32),
+            np.array([
+                float(p.risk_score),
+                float(self.capital),
+                float(self.liabilities_total),
+                float(self.regime),
+            ], dtype=np.float32),
+        )).astype(np.float32)
 
     # ---------- Gym API ----------
     def reset(self, *, seed: Optional[int] = None, options=None):
