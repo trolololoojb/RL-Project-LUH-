@@ -5,25 +5,17 @@ import csv
 import json
 import subprocess
 from pathlib import Path
-from statistics import mean, stdev
 from typing import Callable, List, Tuple
 from datetime import datetime
-import sys
-from source.exploration_schedules import annealed_linear
 
 import numpy as np
 import torch
 
-#from insurance_gym import InsuranceEnv
 from insurance_gym_2 import InsuranceEnvV2 as InsuranceEnv
-from source.exploration_schedules import fixed_eps_schedule, EZGreedy
+from source.exploration_schedules import EZGreedy, fixed_eps_schedule, annealed_linear
 from source.DQN import DQNAgent
 
-# run_experiment.py
-# Benchmark different epsilon strategies (Fixed, EZ-Greedy) on the InsuranceEnv.
-# Parameters such as number of episodes, episode length, delay, repetition length, ε, α, γ, and seed are provided via command line.
-# Generates a timestamped results folder containing experiment_summary.csv, run_meta.json,
-# profiles_<variant>_<seed>.csv and actions_<variant>_<seed>.csv.
+
 
 def _print_progress(current: int, total: int, schedule_label: str, seed: int) -> None:
     """
@@ -53,7 +45,16 @@ def evaluate_policy(env, # DQNAgent,
                     block_ep: int, # current block episode number,
                     label: str, # label for the evaluation variant,
                     seed: int): #   random seed for reproducibility
-    """Greedy-Eval (ε=0) - gibt eine Liste von dicts mit Metriken zurück."""
+    
+    """
+    Evaluate a trained policy in a greedy (ε=0) setting over multiple episodes.
+
+    This function runs the given agent in the provided environment without exploration, 
+    selecting the action with the highest predicted Q-value at each step. 
+    It collects key performance metrics per episode, such as total return, bankruptcy occurrence, 
+    time to ruin, capital trajectory, liabilities, and terminal payouts.
+    """
+
     rows = []
     for i in range(n_episodes):
         obs, info = env.reset(seed=base_seed + i)
@@ -81,17 +82,17 @@ def evaluate_policy(env, # DQNAgent,
                     time_to_ruin = t
                 break
         rows.append({
-            "block_episode": block_ep,
-            "variant": label,
-            "seed": seed,
-            "episode": i,
-            "return": ep_return,
-            "bankrupt": int(final_capital < 0.0),
-            "time_to_ruin": -1 if time_to_ruin is None else int(time_to_ruin),
-            "min_capital": min_capital,
-            "final_capital": final_capital,
-            "liabilities_end": liabilities_end,
-            "terminal_paid": terminal_paid,
+            "block_episode": block_ep, # block episode index for logging
+            "variant": label, # label for the evaluation variant
+            "seed": seed, # evaluation seed
+            "episode": i, # episode index
+            "return": ep_return, # total accumulated reward
+            "bankrupt": int(final_capital < 0.0), # 1 if final capital < 0, else 0
+            "time_to_ruin": -1 if time_to_ruin is None else int(time_to_ruin), # step index when bankruptcy occurred, or -1 if none
+            "min_capital": min_capital, # minimum capital observed during the episode
+            "final_capital": final_capital, # capital at the end of the episode
+            "liabilities_end": liabilities_end, # liabilities at the end of the episode
+            "terminal_paid": terminal_paid, # terminal payouts made at the end of the episode
         })
     return rows
 
@@ -117,7 +118,17 @@ def run_single_experiment(
     eval_episodes: int, # number of eval episodes per evaluation block
     results_dir
 ) -> Tuple[list[float], list, list, list]:
-    """Run one trial and return returns, profiles list, and actions per episode."""
+    
+    """
+    Run a complete reinforcement learning experiment with a specified exploration strategy.
+
+    This function sets up the insurance underwriting environment, initializes a DQN-based agent, 
+    and executes a training loop for the given number of episodes. 
+    Depending on the configuration, it can use standard ε-greedy exploration or 
+    EZ-Greedy (temporally extended ε-greedy) with optional rate correction. 
+    Throughout training, it logs performance metrics, evaluates the agent periodically, and returns all collected results.
+    """
+    
     # initialize environment and agent
     env = InsuranceEnv(
         horizon=horizon,
@@ -290,8 +301,8 @@ def run_single_experiment(
         filename=f"{schedule_label}_seed{seed}.pth"
     )
 
-
     print() # Newline after progress bar
+
     return episode_returns, profile_list, episode_actions, eval_rows, train_rows
 
 
