@@ -1,8 +1,35 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Random-search orchestrator for run_experiment.py
-# - Phase 1: sample N random configs from ranges close to the current grid values.
-# - Phase 2: take Top-K (by EZ tail-mean) + a safety config and train longer.
+"""
+Random-search orchestrator for `run_experiment.py`.
+
+This script automates hyperparameter tuning for the reinforcement learning insurance environment by running two phases of experiments:
+
+Phase 1:
+    - Randomly samples N hyperparameter configurations near currently known good values.
+    - Runs short training trials with these configurations.
+    - Collects and ranks results based on the tail mean of returns for the EZ-Greedy schedule.
+
+Phase 2:
+    - Selects the top-K configurations from Phase 1 plus a conservative "safety" configuration.
+    - Runs longer training experiments on these finalists.
+    - Saves a JSON summary with results from both phases.
+
+Key features:
+- Uses random weighted sampling strategies to generate realistic hyperparameter values.
+- Runs `run_experiment.py` as a subprocess with the chosen configurations.
+- Parses experiment summaries and computes tail means of episode returns.
+- Saves a final summary JSON with top configurations and their performance.
+
+Main classes and functions:
+- TrialResult: Dataclass encapsulating parameters, results directory, and performance metrics.
+- _run_and_collect(params, episodes, horizon): Run a single experiment with given params and collect metrics.
+- _phase1_scenarios_random(n_trials): Generator yielding random hyperparameter configurations for Phase 1.
+- run(): Main entry point orchestrating Phase 1 random search and Phase 2 focused training, saving results.
+
+Usage:
+Run this script from the repository root where `run_experiment.py` is accessible.
+The results will be saved under the `results/` directory with subdirectories per run.
+"""
+
 
 import csv
 import json
@@ -19,29 +46,31 @@ RUN_EXPERIMENT = Path("run_experiment.py")
 RESULTS_ROOT = Path("results")
 
 # ----------- Controls -----------
-PHASE1_TRIALS     = 80      # number of random samples in phase 1 (adjust for runtime)
-PHASE1_EPISODES   = 20
-PHASE1_HORIZON    = 600
-PHASE2_EPISODES   = 100
-PHASE2_HORIZON    = 900
-TOP_K             = 3
+PHASE1_TRIALS     = 80      # Number of random samples in phase 1 (adjust for runtime)
+PHASE1_EPISODES   = 20      # Number of episodes per trial in Phase 1.
+PHASE1_HORIZON    = 500     # Max steps per episode in Phase 1.
+PHASE2_EPISODES   = 100     # Number of episodes per trial in Phase 2 (longer training).
+PHASE2_HORIZON    = 500     # Max steps per episode in Phase 2.
+TOP_K             = 3       # Number of top configurations to carry over to Phase 2.
 BASE_SEED         = 42      # used here AND passed into run_experiment (which also uses seed+1 internally)
-SCALE_EZ          = 1
+SCALE_EZ          = 1       # Scaling factor for EZ-Greedy (passed to experiments).
 RNG               = random.Random(BASE_SEED)
 
-# Conservative "safety" config (small k, cautious eps, high gamma)
+# Conservative "safety" config (small k, cautious eps, high gamma) to ensure a robust baseline.
 SAFETY_CONF = dict(
-    delay_min=3, delay_max=10,
-    gamma=0.999,
-    alpha=3e-4,
-    eps=0.04,
-    k_repeat=3,                  # small & safe for per-customer steps
-    bankruptcy_penalty=250_000,
-    hidden_dims="256,256",
-    batch_size=128,
-    sync_every=800,
-    buffer_capacity=200_000,
+    delay_min=3,              # Minimum delay for claim payouts in the insurance environment
+    delay_max=10,             # Maximum delay for claim payouts
+    gamma=0.999,              # Discount factor for future rewards (high value means long-term planning)
+    alpha=3e-4,               # Learning rate for the Q-learning updates (small for stable learning)
+    eps=0.04,                 # Base epsilon for ε-greedy exploration (relatively conservative)
+    k_repeat=3,               # Number of steps to repeat exploratory actions in EZ-Greedy (small and safe)
+    bankruptcy_penalty=250_000, # Large penalty applied if bankruptcy occurs (encourages cautious behavior)
+    hidden_dims="256,256",    # Neural network architecture: two hidden layers with 256 units each
+    batch_size=128,           # Batch size used during training updates of the DQN
+    sync_every=800,           # Interval (in environment steps) to sync target network weights
+    buffer_capacity=200_000,  # Maximum size of the replay buffer (number of stored transitions)
 )
+
 
 @dataclass
 class TrialResult:

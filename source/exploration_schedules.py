@@ -1,6 +1,8 @@
 import numpy as np
 
-# Provides annealed, constant and EZ-greedy exploration strategies
+"""
+Provides annealed, constant and EZ-greedy exploration strategies
+"""
 
 def annealed_linear(eps_start: float, eps_end: float, horizon: int, n_episodes: int):
     """

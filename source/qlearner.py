@@ -2,7 +2,9 @@ import numpy as np
 from collections import defaultdict
 
 class QLearner:
-    # Implements tabular Q-learning with an epsilon-greedy strategy
+    """
+    Implements tabular Q-learning with an epsilon-greedy strategy.
+    """
 
     def __init__(
         self,

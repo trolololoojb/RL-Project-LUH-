@@ -5,11 +5,14 @@ import torch.nn as nn
 import torch.optim as optim
 import os
 
-# DQNAgent.py
-# Implementation of a DQN agent with experience replay and target network.
+"""
+Implementation of a DQN agent with experience replay and target network.
+"""
 
 class ReplayBuffer:
-    # Ring buffer for storing experience tuples
+    """
+    Ring buffer for storing experience tuples
+    """
     def __init__(self, capacity: int, seed: int | None = None):
         self.capacity = capacity
         self.buffer = []
@@ -19,14 +22,18 @@ class ReplayBuffer:
             np.random.seed(seed)
 
     def push(self, state, action, reward, next_state, done):
-        # Add new transition, overwrite oldest if buffer full
+        """
+        Add new transition, overwrite oldest if buffer full.
+        """
         if len(self.buffer) < self.capacity:
             self.buffer.append(None)
         self.buffer[self.position] = (state, action, reward, next_state, done)
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, batch_size: int):
-        # Sample batch of transitions and convert to tensors efficiently
+        """
+        Sample batch of transitions and convert to tensors efficiently.
+        """
         batch = random.sample(self.buffer, batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
         states_arr = np.array(states, dtype=np.float32)       # shape (batch, state_dim)
@@ -46,7 +53,9 @@ class ReplayBuffer:
         return len(self.buffer)  # current number of stored transitions
 
 class QNetwork(nn.Module):
-    # Feedforward network mapping state -> Q-values
+    """
+    Feedforward network mapping state -> Q-values.
+    """
     def __init__(self, input_dim: int, output_dim: int, hidden_dims=(128, 128), seed: int | None = None):
         super().__init__()
         if seed is not None:
@@ -64,7 +73,9 @@ class QNetwork(nn.Module):
         return self.net(x)  # return Q-values for each action
 
 class DQNAgent:
-    # Wrapper for policy & target networks, action selection, and training
+    """
+    Wrapper for policy & target networks, action selection, and training.
+    """
     def __init__(
         self,
         state_size: int,
@@ -104,7 +115,9 @@ class DQNAgent:
         self.step_count = 0
 
     def select_action(self, state: np.ndarray, epsilon: float) -> int:
-        # Epsilon-greedy: random action or best Q-value
+        """
+        Epsilon-greedy: random action or best Q-value.
+        """
         exploration = False
         if random.random() < epsilon:
             exploration = True
@@ -118,7 +131,9 @@ class DQNAgent:
         self.replay_buffer.push(state, action, reward, next_state, done)
 
     def optimize(self):
-        # Only train if enough samples
+        """
+        Only train if enough samples.
+        """
         if len(self.replay_buffer) < self.batch_size:
             return
 
@@ -150,7 +165,9 @@ class DQNAgent:
             self.target_net.load_state_dict(self.policy_net.state_dict())  # sync networks
 
     def save_model(self, save_dir: str, filename: str):
-        """Save the policy network weights to disk."""
+        """
+        Save the policy network weights to disk.
+        """
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         results_dir = os.path.join(base_dir, "results")
         save_path = os.path.join(results_dir, save_dir)

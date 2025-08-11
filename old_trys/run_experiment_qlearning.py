@@ -5,7 +5,6 @@ import csv
 import json
 import subprocess
 from pathlib import Path
-from statistics import mean, stdev
 from typing import Callable, List, Tuple
 from datetime import datetime
 

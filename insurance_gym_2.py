@@ -5,7 +5,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-# Customer bucketing (same approach as before)
+# Customer bucketing
 AGE_MIN, AGE_MAX = 18, 80
 AGE_BIN_SIZE = 5
 N_AGE_BINS = (AGE_MAX - AGE_MIN) // AGE_BIN_SIZE + 1
@@ -13,8 +13,6 @@ N_REGIONS = 5
 RISK_BIN_SIZE = 0.1
 N_RISK_BINS = int(1 / RISK_BIN_SIZE)
 N_PROFILE_BUCKETS = N_AGE_BINS * N_REGIONS * N_RISK_BINS
-
-# Additional buckets
 CAP_BINS = 10
 LIAB_BINS = 10
 N_REGIMES = 3  # e.g., good / neutral / bad
@@ -124,7 +122,9 @@ class InsuranceEnvV2(gym.Env):
 
     
     def _terminal_settlement(self) -> float:
-        # Settle all remaining liabilities at episode end
+        """
+        Settle all remaining liabilities at episode end.
+        """
         remaining = float(np.sum(self.buffer))
         if remaining != 0.0:
             self.capital += remaining
@@ -134,11 +134,15 @@ class InsuranceEnvV2(gym.Env):
         return remaining
 
     def _price(self, p: Profile) -> float:
-        # Calculate the premium based on age, region, and risk score
+        """
+        Calculate the premium based on age, region, and risk score.
+        """
         return float(self.base_premium + self.base_price_age * (p.age - AGE_MIN) + self.region_fees[p.region])
 
     def _claim_prob(self, p: Profile) -> float:
-        # Calculate the claim probability based on profile and regime
+        """
+        Calculate the claim probability based on profile and regime.
+        """
         base = 0.02 + 0.1 * p.risk_score # base probability + risk score influence
         age_factor = (p.age - AGE_MIN) / (AGE_MAX - AGE_MIN) * 0.2
         region_risk = np.array([0.00, -0.1, 0.8, -0.2, 0.3], dtype=np.float32)
@@ -146,20 +150,25 @@ class InsuranceEnvV2(gym.Env):
         return float(np.clip(prob, 0.0, 0.80)) 
 
     def _pareto(self) -> float:
-        # Sample a loss from the Pareto distribution
+        """
+        Sample a loss from the Pareto distribution.
+        """
         u = float(self.rng.random())
-        loss = self.pareto_xm / (u ** (1.0 / self.pareto_alpha))# sample from Pareto (xm, alpha)
-        #print(f"Sampled loss: {loss} with regime multiplier {self.regime_loss_multipliers[self.regime]} is {loss * float(self.regime_loss_multipliers[self.regime])}")
+        loss = self.pareto_xm / (u ** (1.0 / self.pareto_alpha)) # sample from Pareto (xm, alpha)
         return loss * float(self.regime_loss_multipliers[self.regime]) * (float(self.base_premium) / 2)
 
     def _one_hot_region(self, r: int) -> np.ndarray:
-        # One-hot encode the region index
+        """
+        One-hot encode the region index.
+        """
         v = np.zeros(N_REGIONS, dtype=np.float32)
         v[int(r)] = 1.0
         return v
 
     def _get_obs(self, p: Profile) -> np.ndarray:
-        # Get the observation vector for a profile
+        """
+        Get the observation vector for a profile.
+        """
         reg_oh = self._one_hot_region(p.region)
         return np.concatenate((
             np.array([float(p.age)], dtype=np.float32),
@@ -174,7 +183,9 @@ class InsuranceEnvV2(gym.Env):
 
     # ---------- Gym API ----------
     def reset(self, *, seed: Optional[int] = None, options=None):
-        # Reset the environment state
+        """
+        Reset the environment state.
+        """
         if seed is not None:
             self.rng = np.random.default_rng(seed)
         self.t = 0
@@ -188,7 +199,9 @@ class InsuranceEnvV2(gym.Env):
         return obs, {"profile_idx": self.current_profile_idx, "regime": self.regime, "capital": self.capital, "liabilities": self.liabilities_total}
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
-        # Execute one step in the environment
+        """
+        Execute one step in the environment.
+        """
         assert self.action_space.contains(action) # check if action is valid
         reward = 0.0
         premium = 0.0
