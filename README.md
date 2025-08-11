@@ -4,7 +4,7 @@ In a synthetic insurance-underwriting MDP with Pareto heavy-tailed losses and de
 
 
 # More insights
-rl.trolololoo.de
+Link: [Link Text](trolololoo.de)
 
 
 # Johann, der Agentenbändiger
