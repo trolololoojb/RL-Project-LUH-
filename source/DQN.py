@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import os
 
 # DQNAgent.py
 # Implementation of a DQN agent with experience replay and target network.
@@ -147,3 +148,16 @@ class DQNAgent:
         self.step_count += 1
         if self.step_count % self.sync_every == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())  # sync networks
+
+    def save_model(self, save_dir: str, filename: str):
+        """Save the policy network weights to disk."""
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        results_dir = os.path.join(base_dir, "results")
+        save_path = os.path.join(results_dir, save_dir)
+        save_path = os.path.join(save_dir, "models")
+
+        os.makedirs(save_path, exist_ok=True)
+        full_path = os.path.join(save_path, filename)
+
+        torch.save(self.policy_net.state_dict(), full_path)
+        print(f"[DQNAgent] Model saved to {full_path}")
