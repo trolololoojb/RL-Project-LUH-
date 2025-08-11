@@ -1,0 +1,24 @@
+{
+  "git_commit": "8d46ef0029f32c7bc0ede2a4caa5dd81f2a892c3",
+  "episodes": 500,
+  "horizon": 500,
+  "min_delay": 8,
+  "max_delay": 25,
+  "k_repeat": 4,
+  "eps": 0.05,
+  "alpha": 0.0004,
+  "gamma": 0.999,
+  "seeds": [
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "scaling": 1
+}
