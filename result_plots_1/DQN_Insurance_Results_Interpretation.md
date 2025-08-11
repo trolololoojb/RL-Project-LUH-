@@ -19,7 +19,7 @@ Zur Lesbarkeit werden nach jedem Plot **Beobachtungen**, **Interpretation/Begrü
 - **EZ (orange)** und **Fixed (grün)**: starten hoch (**~0.95**) und verbleiben in **~0.92–0.96** mit wellenförmigen Schwankungen.
 - Gegen Ende konvergieren alle drei Strategien auf ein ähnlich hohes Niveau.
 
-**Interpretation & Begründung**
+**Mögliche Interpretation & Begründung**
 - Die **steigende Kurve unter Annealed** passt zu der Erwartung, dass anfangs viel exploriert wird (mehr suboptimale Angebote/Entscheidungen → geringere Acceptance), und mit sinkendem ε die **Ausnutzung** („exploitation“) überwiegt → **bessere Angebots-/Preisentscheidungen** → höhere Acceptance.
 - Die **hohe Start‑Acceptance** bei **EZ/Fixed** deutet darauf hin, dass diese Strategien **von Beginn an weniger explorieren** und damit **konservativere Entscheidungen** treffen, die öfter angenommen werden – allerdings mit geringerem Lernschub am Anfang.
 - Die **Wellen** sprechen für **Regime-/Störschwankungen** im Environment (z. B. wechselnde Anspruchshäufigkeiten oder Nachfrage), die alle Strategien ähnlich treffen.
@@ -38,7 +38,7 @@ Zur Lesbarkeit werden nach jedem Plot **Beobachtungen**, **Interpretation/Begrü
 - **Fixed** zeigt einen **tiefen Dip** um **Ep. ~150–200**, erholt sich danach auf **~395–397**.
 - **Annealed** startet am niedrigsten (**~382**) und **steigt stetig** Richtung **~392–395**.
 
-**Interpretation & Begründung**
+**Mögliche Interpretation & Begründung**
 - **EZ** kombiniert eine **konstante, aber nicht übermäßige Exploration** mit starker **Ausnutzung** profitabler Preisbereiche – dadurch **höhere Preise**, ohne die Acceptance stark einzubüßen (siehe Plot 1).
 - Der **Dip bei Fixed** legt nahe, dass die starre Exploration zu **falschen Preisregionen** geführt hat (z. B. vorübergehend zu niedrige/zu hohe Preisangebote, die Akzeptanz/Risiko ungünstig verschieben).
 - **Annealed** benötigt anfangs Exploration (niedrigere Premiums), **konvergiert aber** zu konkurrenzfähigen Werten – konsistent mit der Lernkurve aus Plot 1.
@@ -56,9 +56,9 @@ Zur Lesbarkeit werden nach jedem Plot **Beobachtungen**, **Interpretation/Begrü
 **Beobachtungen**
 - Alle Strategien schwanken grob zwischen **~6 % und ~20 %**.
 - **Periodische Wellen** sind sichtbar (mehrfaches Auf und Ab über die Episoden).
-- **Annealed** zeigt tendenziell die **konsistenteste Abnahme** gegen Ende.
+- **Annealed** zeigt tendenziell die **stärkste Abnahme** gegen Ende endet aber nicht mit dem besten Ergebnis.
 
-**Interpretation & Begründung**
+**Mögliche Interpretation & Begründung**
 - Die Bandbreite deutet auf **Stochastik/Regimewechsel** im Environment hin (z. B. Schaden-Cluster). Das erklärt die **Synchronität** der Wellen über Strategien hinweg.
 - **Annealed** profitiert vom sauberen **Exploration→Exploitation‑Übergang**, wodurch **riskante Aktionen** sukzessive vermieden werden – das **senkt** die Insolvenzrate **nachhaltig**.
 - **EZ/Fixed** reagieren weniger adaptiv, da ihre Exploration **kaum/gar nicht** mit dem Trainingsfortschritt mitwächst bzw. abnimmt.
@@ -72,11 +72,11 @@ Zur Lesbarkeit werden nach jedem Plot **Beobachtungen**, **Interpretation/Begrü
 ![Bankruptcy Rate – Eval](BankruptcyRate_evaluation.png)
 
 **Beobachtungen**
-- In der **greedy** (d. h. **ohne Exploration**) Auswertung liegt die Insolvenzrate meist zwischen **~4 % und ~14 %**.
+- In der **greedy** (d. h. **ohne Exploration**) Auswertung liegt die Insolvenzrate ab ~ Episode 300 zwischen **~4 % und ~14 %**.
 - **Annealed** erreicht **Tiefstwerte ~4–6 %** gegen **Ep. 400–450**.
 - **Kein absoluter, durchgängiger Sieger**, aber **Annealed** zeigt die **klarste Verbesserung** im Verlauf.
 
-**Interpretation & Begründung**
+**Mögliche Interpretation & Begründung**
 - Die greedy‑Evaluation misst **reine Policy‑Qualität**. Dass **Annealed** hier deutlich fällt, bestätigt, dass die **gelernten Q‑Werte** stabil „exploitable“ sind.
 - **EZ** performt ähnlich gut, aber **volatiler**, was zur Preis‑/Return‑Varianz (Plots 2 & 8) passt.
 - **Fixed** ist im Mittel ok, aber **ohne klaren Abwärtstrend** – konsistent mit den Kapitalsprüngen (Plot 6/7).
@@ -90,10 +90,10 @@ Zur Lesbarkeit werden nach jedem Plot **Beobachtungen**, **Interpretation/Begrü
 ![Exploration Steps](ExplorationSteps.png)
 
 **Beobachtungen**
-- **Annealed** startet mit **sehr vielen** Explorationen und fährt diese **linear auf ~0** herunter.
+- **Annealed** startet mit **sehr vielen** Explorationen und fährt diese **linear** herunter.
 - **EZ** und **Fixed** verbleiben **nahezu konstant niedrig** über das gesamte Training.
 
-**Interpretation & Begründung**
+**Mögliche Interpretation & Begründung**
 - Das ist **idealtypisches Verhalten** für annealed ε‑greedy: Erst **breite Zustands-/Aktionsabdeckung**, dann **Fokussierung** auf erfolgreiche Muster.
 - Dass **EZ** trotz **weniger Exploration** gute Werte erzielt, spricht für eine **gute Start-Policy** oder **strukturierte Entscheidung** (z. B. feste Heuristiken/Preisanker), die **schnell verwertbar** ist.
 - **Fixed** exploriert nicht adaptiv → **höheres Risiko**, in suboptimalen Regionen hängen zu bleiben (spiegelt sich in Kapitalsprüngen).
@@ -111,7 +111,7 @@ Zur Lesbarkeit werden nach jedem Plot **Beobachtungen**, **Interpretation/Begrü
 - **Fixed** zeigt einen **massiven Drawdown** um **Ep. ~240–270**, weit ins **Negative**.
 - **Annealed** und **EZ** bleiben **nahe Null** (mit üblichen Schwankungen).
 
-**Interpretation & Begründung**
+**Mögliche Interpretation & Begründung**
 - Der Drawdown unter **Fixed** ist konsistent mit **starrer Exploration**: Trifft die Policy in einem **ungünstigen Regime** auf **feste** Explorationswahrscheinlichkeiten, können **Fehlentscheidungen akkumulieren** (z. B. falsche Preis-/Annahme-Trade‑offs), was **Kapital massiv belastet**.
 - Da die anderen Strategien **stabil** bleiben, ist ein **Implementationsfehler** eher unwahrscheinlich; es spricht für eine **Strategie‑/Risikointeraktion**.
 
@@ -128,7 +128,7 @@ Zur Lesbarkeit werden nach jedem Plot **Beobachtungen**, **Interpretation/Begrü
 - Der **gleiche Einbruch** wie bei **Final Capital** ist unter **Fixed** zu sehen.
 - **Annealed**/**EZ** zeigen **keine katastrophalen Tiefpunkte**.
 
-**Interpretation & Begründung**
+**Mögliche Interpretation & Begründung**
 - Bestätigt, dass der Drawdown **kein Rendering-/Skalenartefakt** ist, sondern **tatsächliches Risikoereignis** (z. B. Cluster hoher Schadenszahlungen bei unpassender Pricing-/Annahmepolitik).
 
 **Implikationen**
@@ -143,7 +143,7 @@ Zur Lesbarkeit werden nach jedem Plot **Beobachtungen**, **Interpretation/Begrü
 - Alle drei Strategien **oszillieren** stark **um 0** (hohe Volatilität).
 - Ein **extremer Negativ‑Spike** (wieder **Fixed**) um **Ep. ~240–270**.
 
-**Interpretation & Begründung**
+**Mögliche Interpretation & Begründung**
 - Die **Return‑Volatilität** passt zu **stochastischen Rewards** (z. B. seltene hohe Schäden).
 - Der **Spike** ist konsistent mit dem **Kapital‑Drawdown** – die Policy hat in dieser Phase **systematisch schlechte Entscheidungen** getroffen.
 
@@ -161,7 +161,7 @@ Zur Lesbarkeit werden nach jedem Plot **Beobachtungen**, **Interpretation/Begrü
 - **Annealed** liegt **knapp darunter**, wirkt **stabiler**.
 - **Fixed** **unterperformt** und zeigt **größere Risiken** (breite Streuung).
 
-**Interpretation & Begründung**
+**Mögliche Interpretation & Begründung**
 - In der greedy‑Eval werden **keine Explorationsschritte** ausgeführt → Messung der **Policy‑Qualität ohne Zufallssprünge**. Dass **EZ** die höchsten Returns erzielt, passt zu den **höheren akzeptierten Prämien** (Plot 2) bei **vergleichbarer Acceptance** (Plot 1).
 - **Annealed** liefert **robuste Returns** mit **geringerem Risiko** (vgl. Insolvenz/Kapital).
 
