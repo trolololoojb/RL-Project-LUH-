@@ -48,9 +48,9 @@ RESULTS_ROOT = Path("results")
 # ----------- Controls -----------
 PHASE1_TRIALS     = 80      # Number of random samples in phase 1 (adjust for runtime)
 PHASE1_EPISODES   = 20      # Number of episodes per trial in Phase 1.
-PHASE1_HORIZON    = 600     # Max steps per episode in Phase 1.
+PHASE1_HORIZON    = 500     # Max steps per episode in Phase 1.
 PHASE2_EPISODES   = 100     # Number of episodes per trial in Phase 2 (longer training).
-PHASE2_HORIZON    = 900     # Max steps per episode in Phase 2.
+PHASE2_HORIZON    = 500     # Max steps per episode in Phase 2.
 TOP_K             = 3       # Number of top configurations to carry over to Phase 2.
 BASE_SEED         = 42      # used here AND passed into run_experiment (which also uses seed+1 internally)
 SCALE_EZ          = 1       # Scaling factor for EZ-Greedy (passed to experiments).
