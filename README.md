@@ -3,6 +3,10 @@
 In a synthetic insurance-underwriting MDP with Pareto heavy-tailed losses and delayed payouts, does rate-corrected, k-persistent ε-greedy (EZ) achieve higher discounted return and lower ruin risk (bankruptcy rate / CVaR of episodic returns) than fixed and annealed ε-greedy, under the same DQN and training budget?
 
 
+# More insights
+rl.trolololoo.de
+
+
 # Johann, der Agentenbändiger
 
 Inmitten von Code, so still und klar,
