@@ -311,11 +311,11 @@ def main() -> None:
         description="Insurance Underwriting Experiment"
     )
     parser.add_argument(
-        "--episodes", "-p", type=int, default=300,
+        "--episodes", "-p", type=int, default=500,
         help="Number of episodes per seed"
     )
     parser.add_argument(
-        "--horizon", "-l", type=int, default=1000,
+        "--horizon", "-l", type=int, default=500,
         help="Maximum number of steps per episode"
     )
     parser.add_argument(
@@ -411,7 +411,7 @@ def main() -> None:
     eval_every=args.eval_every
     eval_episodes=args.eval_episodes
 
-    seeds = list(range(base_seed, base_seed + 5))
+    seeds = list(range(base_seed, base_seed + 10))
     if scaling == 1:
         eps_ez = eps / (k_repeat - eps * (k_repeat - 1)) # scale ε for EZ-Greedy
     else:
