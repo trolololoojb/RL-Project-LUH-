@@ -26,7 +26,9 @@ from source.DQN import DQNAgent
 # profiles_<variant>_<seed>.csv and actions_<variant>_<seed>.csv.
 
 def _print_progress(current: int, total: int, schedule_label: str, seed: int) -> None:
-    # Print a progress bar to the console
+    """
+    Print a progress bar to the console
+    """
     width = 30
     filled = int(width * current / total)
     bar = "#" * filled + "-" * (width - filled)
@@ -34,7 +36,9 @@ def _print_progress(current: int, total: int, schedule_label: str, seed: int) ->
     print(msg, end="", flush=True)
 
 def get_git_commit() -> str:
-    """Return the current Git commit hash."""
+    """
+    Return the current Git commit hash.
+    """
     try:
         out = subprocess.check_output(["git", "rev-parse", "HEAD"])
         return out.decode().strip()
@@ -111,6 +115,7 @@ def run_single_experiment(
     buffer_capacity: int, # replay buffer capacity (number of transitions)
     eval_every: int, # run an evaluation block every N training episodes
     eval_episodes: int, # number of eval episodes per evaluation block
+    results_dir
 ) -> Tuple[list[float], list, list, list]:
     """Run one trial and return returns, profiles list, and actions per episode."""
     # initialize environment and agent
@@ -280,6 +285,12 @@ def run_single_experiment(
             )
         _print_progress(ep + 1, n_episodes, schedule_label, seed)
 
+    agent.save_model(
+        save_dir=results_dir,
+        filename=f"{schedule_label}_seed{seed}.pth"
+    )
+
+
     print() # Newline after progress bar
     return episode_returns, profile_list, episode_actions, eval_rows, train_rows
 
@@ -439,6 +450,7 @@ def main() -> None:
                 buffer_capacity=buffer_capacity,
                 eval_every=eval_every,
                 eval_episodes=eval_episodes,
+                results_dir=results_dir
             )
 
             # save profile list for this run
