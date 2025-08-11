@@ -9,10 +9,13 @@ import torch.optim as optim
 
 class ReplayBuffer:
     # Ring buffer for storing experience tuples
-    def __init__(self, capacity: int):
+    def __init__(self, capacity: int, seed: int | None = None):
         self.capacity = capacity
         self.buffer = []
         self.position = 0
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
 
     def push(self, state, action, reward, next_state, done):
         # Add new transition, overwrite oldest if buffer full
@@ -43,8 +46,10 @@ class ReplayBuffer:
 
 class QNetwork(nn.Module):
     # Feedforward network mapping state -> Q-values
-    def __init__(self, input_dim: int, output_dim: int, hidden_dims=(128, 128)):
+    def __init__(self, input_dim: int, output_dim: int, hidden_dims=(128, 128), seed: int | None = None):
         super().__init__()
+        if seed is not None:
+            torch.manual_seed(seed)
         layers = []
         prev = input_dim
         for h in hidden_dims:
@@ -69,18 +74,29 @@ class DQNAgent:
         gamma=0.99,
         lr=1e-3,
         sync_every=1000,
-        device=None
+        device=None,
+        seed: int | None = None # random seed for reproducibility
     ):
+        
+        # Set all seeds for reproducibility
+
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
         # Setup device and networks
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.policy_net = QNetwork(state_size, action_size, hidden_dims).to(self.device)
-        self.target_net = QNetwork(state_size, action_size, hidden_dims).to(self.device)
+        self.policy_net = QNetwork(state_size, action_size, hidden_dims, seed=seed).to(self.device)
+        self.target_net = QNetwork(state_size, action_size, hidden_dims, seed=seed).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())  # copy weights
         self.target_net.eval()  # set target net to evaluation mode
 
         # Optimizer and replay buffer
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr)
-        self.replay_buffer = ReplayBuffer(buffer_capacity)
+        self.replay_buffer = ReplayBuffer(buffer_capacity, seed=seed)
         self.batch_size = batch_size
         self.gamma = gamma
         self.sync_every = sync_every
@@ -88,11 +104,13 @@ class DQNAgent:
 
     def select_action(self, state: np.ndarray, epsilon: float) -> int:
         # Epsilon-greedy: random action or best Q-value
+        exploration = False
         if random.random() < epsilon:
-            return random.randrange(self.policy_net.net[-1].out_features)
+            exploration = True
+            return random.randrange(self.policy_net.net[-1].out_features), exploration
         state_v = torch.from_numpy(state).unsqueeze(0).to(self.device)  # add batch dim
         q_vals = self.policy_net(state_v)  # compute Q-values
-        return int(q_vals.argmax().item())  # select argmax
+        return int(q_vals.argmax().item()), exploration  # select argmax
 
     def store_transition(self, state, action, reward, next_state, done):
         # Add transition to replay buffer
