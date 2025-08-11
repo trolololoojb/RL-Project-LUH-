@@ -150,7 +150,7 @@ class InsuranceEnvV2(gym.Env):
         u = float(self.rng.random())
         loss = self.pareto_xm / (u ** (1.0 / self.pareto_alpha))# sample from Pareto (xm, alpha)
         #print(f"Sampled loss: {loss} with regime multiplier {self.regime_loss_multipliers[self.regime]} is {loss * float(self.regime_loss_multipliers[self.regime])}")
-        return loss * float(self.regime_loss_multipliers[self.regime]) * float(self.base_premium)
+        return loss * float(self.regime_loss_multipliers[self.regime]) * (float(self.base_premium) / 2)
 
     def _one_hot_region(self, r: int) -> np.ndarray:
         # One-hot encode the region index
