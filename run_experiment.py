@@ -44,7 +44,6 @@ def get_git_commit() -> str:
 def evaluate_policy(env, # DQNAgent,
                     agent, # InsuranceEnv,
                     n_episodes: int, # number of episodes to evaluate,
-                    gamma: float, # discount factor,
                     max_steps: int, # maximum number of steps per episode,
                     base_seed: int, # base seed for reproducibility,
                     block_ep: int, # current block episode number,
@@ -365,7 +364,7 @@ def main() -> None:
         help="Run an evaluation block every N training episodes"
     )
     parser.add_argument(
-        "--eval_episodes", type=int, default=10,
+        "--eval_episodes", type=int, default=50,
         help="Number of eval episodes per evaluation block"
     )
     args = parser.parse_args()
