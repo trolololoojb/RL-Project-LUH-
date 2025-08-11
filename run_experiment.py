@@ -271,7 +271,6 @@ def run_single_experiment(
                 evaluate_policy(
                     env, agent,
                     n_episodes=eval_episodes,
-                    gamma=gamma,
                     max_steps=horizon,
                     base_seed=seed * 10_000 + (ep + 1) * 100, # unique seed for each eval block
                     block_ep=ep + 1,
